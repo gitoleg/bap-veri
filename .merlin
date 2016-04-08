@@ -1,0 +1,13 @@
+B _build/lib
+B _build/src
+B _build/tests
+S lib
+S src
+S tests
+
+PKG core_kernel
+PKG cmdliner
+PKG oUnit
+PKG bap
+PKG bap-traces
+PKG bap-piqi-traces
