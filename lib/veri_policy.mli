@@ -1,15 +1,27 @@
+open Bap.Std
+open Bap_traces.Std
 
-(** rule = ACTION : INSN : EVENT : EVENT *)
+module Rule : sig
+  type action
+  type t
+  
+  val create: 
+    ?insn:string -> ?left:string -> ?right:string -> action -> t
 
-type rule
-type action
-type field = string
+  val skip : action
+  val deny : action
+  val is_deny: t -> bool
+  val is_skip: t -> bool
+end
 
-val any   : field
-val empty : field
-val skip : action
-val deny : action
-val is_deny: rule -> bool
-val is_skip: rule -> bool
+type t
+type event = Trace.event
+type rule = Rule.t
 
-val make_rule: ?insn:field -> ?left:field -> ?right:field -> action -> rule
+val create : rule -> t
+
+(** [match_events t insn_name events events'] *)
+val match_events: 
+  t -> string -> event list -> event list -> (event option * event option) list
+
+
