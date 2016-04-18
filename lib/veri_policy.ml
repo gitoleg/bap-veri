@@ -43,8 +43,9 @@ module Rule = struct
 end
 
 type rule = Rule.t
-
 type trial = Re.re
+type event = Trace.event
+type events = event list
 
 type t = {
   insn_trial  : trial;
@@ -52,9 +53,6 @@ type t = {
   right_trial : trial;
   rule        : rule;
 }
-
-type event = Trace.event
-type events = event list
 
 let make_trial s = Re.compile (Re_posix.re s)
 
@@ -66,11 +64,8 @@ let create rule = {
 }
 
 let sat e s = Re.execp e s
-
 let sat_event e ev = Re.execp e (Value.pps () ev)
-
-let sat_events (e, ev) (e', ev') = 
-  sat_event e ev && sat_event e' ev'
+let sat_events (e, ev) (e', ev') = sat_event e ev && sat_event e' ev'
 
 module G = struct
   type g = trial * event array

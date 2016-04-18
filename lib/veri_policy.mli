@@ -4,14 +4,10 @@ open Bap_traces.Std
 type t
 type event = Trace.event
 type events = event list
+type action
 
-module Action : sig
-  type t
-  val of_string: string -> t
-  val is: t -> t -> bool
-end
-
-type action = Action.t 
+val skip : action
+val deny : action
 
 module Rule : sig
   type t
@@ -28,6 +24,4 @@ val create : rule -> t
 val match_events: 
   t -> string -> events -> events -> (event option * event option) list
 
-val skip : action
-val deny : action
 
