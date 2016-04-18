@@ -9,11 +9,6 @@ module Action = struct
   let is act act' = String.compare act act' = 0
 end
 
-type action = Action.t
-
-let skip = Action.of_string "SKIP"
-let deny = Action.of_string "DENY"
-
 module Field = struct
   type t = string
   let of_string = ident
@@ -22,49 +17,45 @@ module Field = struct
 end
 
 type field = Field.t
+type action = Action.t
 
-module Rule = struct
-  
-  type t = {
-    action : action;
-    insn   : field;
-    left   : field;
-    right  : field;
-  } [@@deriving fields]
+let skip = Action.of_string "SKIP"
+let deny = Action.of_string "DENY"
+let is_skip = Action.is skip
+let is_deny = Action.is deny
 
-  let create ?insn ?left ?right action = 
-    let of_opt v = 
-      Option.value_map v ~default:Field.empty ~f:ident in {
-      action; 
-      insn  = of_opt insn; 
-      left  = of_opt left; 
-      right = of_opt right; 
-    }
-end
-
-type rule = Rule.t
-type trial = Re.re
-type event = Trace.event
-type events = event list
+type trial = {
+  regexp : Re.re;
+  field  : Field.t
+}
 
 type t = {
-  insn_trial  : trial;
-  left_trial  : trial;
-  right_trial : trial;
-  rule        : rule;
+  action : action;
+  insn   : trial;
+  left   : trial;
+  right  : trial;
+} [@@deriving fields]
+
+let make_trial s = 
+  let field = match s with 
+    | None -> Field.empty
+    | Some s -> s in {
+    regexp = Re.compile (Re_posix.re field);
+    field;
+  }
+
+let create ?insn ?left ?right action : t = {
+  action; 
+  insn  = make_trial insn; 
+  left  = make_trial left; 
+  right = make_trial right; 
 }
 
-let make_trial s = Re.compile (Re_posix.re s)
+type event = Trace.event
+type events = Value.Set.t
 
-let create rule = {
-  insn_trial = make_trial (Rule.insn rule);
-  left_trial = make_trial (Rule.left rule);
-  right_trial = make_trial (Rule.right rule);
-  rule = rule;
-}
-
-let sat e s = Re.execp e s
-let sat_event e ev = Re.execp e (Value.pps () ev)
+let sat e s = Re.execp e.regexp s
+let sat_event e ev = sat e (Value.pps () ev)
 let sat_events (e, ev) (e', ev') = sat_event e ev && sat_event e' ev'
 
 module G = struct
@@ -126,12 +117,12 @@ end
 module FFMF = Flow.Ford_Fulkerson(G)(F)
 
 let single_match trial events =
-  List.filter ~f:(sat_event trial) events
+  List.filter ~f:(sat_event trial) (Set.to_list events)
 
-let is_empty_insn  t = Field.is_empty (Rule.insn t.rule)
-let is_empty_left  t = Field.is_empty (Rule.left t.rule)
-let is_empty_right t = Field.is_empty (Rule.right t.rule)
-let is_sat_insn t insn = not (is_empty_insn t) && sat t.insn_trial insn
+let is_empty_insn  t = Field.is_empty t.insn.field
+let is_empty_left  t = Field.is_empty t.left.field
+let is_empty_right t = Field.is_empty t.right.field
+let is_sat_insn t insn = not (is_empty_insn t) && sat t.insn insn
 
 let match_events t insn events events' =
   match is_sat_insn t insn with
@@ -139,14 +130,14 @@ let match_events t insn events events' =
   | true -> 
     match is_empty_left t, is_empty_right t with
     | true, _ ->
-      single_match t.right_trial events' |>
+      single_match t.right events' |>
       List.map ~f:(fun e -> None, Some e)
     | _, true -> 
-      single_match t.left_trial events |>
+      single_match t.left events |>
       List.map ~f:(fun e -> Some e, None)
     | _ -> 
-      let workers = t.left_trial, Array.of_list events in      
-      let jobs = t.right_trial, Array.of_list events' in
+      let workers = t.left, Set.to_array events in      
+      let jobs = t.right, Set.to_array events' in
       let (flow,_) = FFMF.maxflow (workers, jobs) G.V.Source G.V.Sink  in
       Array.foldi (snd workers) ~init:[] 
         ~f:(fun i acc w ->   
@@ -155,3 +146,28 @@ let match_events t insn events events' =
             | None -> acc 
             | Some (_,e) -> (Some w, Some e) :: acc)  
 
+
+type deny_error = events * events
+type r = (events * events, deny_error) Result.t
+
+let remove what from = 
+  List.fold_left ~init:from ~f:Set.remove what
+
+let process t insn events events' : r = 
+  match match_events t insn events events' with 
+  | [] -> Ok (events, events')
+  | res ->
+    let evs, evs' = List.fold_left ~init:([],[]) res
+        ~f:(fun (evs, evs')  -> function
+            | Some e, Some e' -> e :: evs, e' :: evs'
+            | Some e, None -> e :: evs, evs'
+            | None, Some e' -> evs, e' :: evs'
+            | None, None -> evs, evs') in
+  if is_skip t.action then
+    let events = remove evs events in
+    let events' = remove evs' events' in
+    Ok (events, events')
+  else
+    Error (Value.Set.of_list evs, Value.Set.of_list evs')
+
+    
