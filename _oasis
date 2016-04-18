@@ -8,15 +8,15 @@ Maintainers: Ivan Gotovchits <ivg@ieee.org>,
 License:     MIT
 Copyrights:  (C) 2016 Carnegie Mellon University
 Plugins:     META (0.4), DevFiles (0.4)
-BuildTools: ocamlbuild
+BuildTools:  ocamlbuild
 BuildDepends: core_kernel
 
 Library veri
   Path:           lib
   FindLibName:    bap-veri
-  Modules:        Veri, Veri_error, Veri_report, Veri_traci
+  Modules:        Veri, Veri_error, Veri_report, Veri_traci, Veri_policy
   CompiledObject: best
-  BuildDepends:   bap, bap-traces
+  BuildDepends:   bap, bap-traces, ppx_jane
 
 Library veri_test
   Path:            tests
