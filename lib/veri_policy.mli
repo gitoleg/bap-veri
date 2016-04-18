@@ -3,28 +3,24 @@ open Bap.Std
 open Bap_traces.Std
 
 (** rule = ACTION : INSN : EVENT : EVENT  *)
-
-type t
+type rule
+type t = rule list
 type event = Trace.event
 type events = Value.Set.t
-type set_pair = events * events
 type action
+
+type matched =
+  | Left of event
+  | Right of event
+  | Both of event * event
 
 val skip : action
 val deny : action
+val pp_rule: Format.formatter -> rule -> unit
 
-val create:
-  ?insn:string -> ?left:string -> ?right:string -> action -> t
+val make_rule:
+  ?insn:string -> ?left:string -> ?right:string -> action -> rule
 
-val match_events: t -> string -> events -> events -> 
-  (event option * event option) list
+val match_events: rule -> string -> events -> events -> matched list
 
-(** type [deny_error] list all events that matches to deny rule *)
-type deny_error = set_pair
-
-type r = (set_pair, deny_error) Result.t
-
-(** [process t insn events events] - returns 
-    either successful filtered events, either
-    events that was denied *)
-val process: t -> string -> events -> events -> r
+val denied: t -> string -> events -> events -> (rule * matched list) list

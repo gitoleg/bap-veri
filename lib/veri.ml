@@ -49,16 +49,14 @@ end
 
 module Events = Value.Set
 
-let apply_policies ps insn events events' = 
-  let open Result in
-  let rec apply ps (evs,evs') = match ps with
-    | [] -> Ok (evs, evs')
-    | p::ps ->
-      Veri_policy.process p insn evs evs' >>=
-      apply ps in
-  apply ps (events, events')
+let print ms = 
+  let open Veri_policy in
+  List.iter (fun (rule, ms) -> match m with 
+      | Left ev -> 
 
-class context polices report trace = object(self:'s)
+ )
+
+class context policies report trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val report : Veri_report.t = report
   val events = Events.empty
@@ -71,13 +69,16 @@ class context polices report trace = object(self:'s)
       match error with 
       | Some er -> Veri_report.notify report er
       | None ->
-        let events = Option.(value_exn self#other)#events in
-        let events' = self#events in
-        let left = Set.diff events events' in
-        let right = Set.diff events' events in
         match descr with
         | None -> report
-        | Some name -> Veri_report.update report name (left,right) in   
+        | Some name ->
+          let events = Option.(value_exn self#other)#events in
+          let events' = self#events in
+          match Veri_policy.denied policies name events events' with
+          | [] -> report 
+          | ms -> 
+            print ms;
+            report in
     {<other = None; error = None; descr = None; 
       events = Events.empty; report = report >}
 
@@ -208,6 +209,7 @@ class ['a] t arch dis is_interesting =
         | Ok insn -> self#eval_insn insn
 
     method! eval_event ev = 
+      Format.(fprintf std_formatter "came: %a\n" Value.pp ev);
       let update () = SM.update (fun c -> c#register_event ev) in
       let is_after_code () = 
         SM.get () >>= fun c ->

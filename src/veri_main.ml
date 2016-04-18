@@ -32,13 +32,18 @@ let eval file f =
     | Some arch -> f arch trace
     | None -> Printf.eprintf "trace of unknown arch\n"
 
+let policies = 
+  let open Veri_policy in [ 
+    create ~insn:" *" ~left:"pc_update *" skip;  
+  ]
+
 let run file =
   let f arch trace = 
     let report = 
       Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
           let dis = Dis.store_asm dis |> Dis.store_kinds in          
           let report = Veri_report.create () in
-          let ctxt = new Veri.context [] report trace in
+          let ctxt = new Veri.context policies report trace in
           let veri  = new Veri.t arch dis (fun _ -> true) in
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in

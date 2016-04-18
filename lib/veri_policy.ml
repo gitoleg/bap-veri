@@ -3,12 +3,6 @@ open Graph
 open Bap.Std
 open Bap_traces.Std
 
-module Action = struct
-  type t = string
-  let of_string = ident
-  let is act act' = String.compare act act' = 0
-end
-
 module Field = struct
   type t = string
   let of_string = ident
@@ -17,29 +11,31 @@ module Field = struct
 end
 
 type field = Field.t
-type action = Action.t
 type event = Trace.event
 type events = Value.Set.t
-type set_pair = events * events 
-type deny_error = set_pair
-type r = (set_pair, deny_error) Result.t
+type action = Skip | Deny
+
+type matched = 
+  | Left of event
+  | Right of event
+  | Both of event * event
 
 type trial = {
   regexp : Re.re;
   field  : Field.t
 }
 
-type t = {
+type rule = {
   action : action;
   insn   : trial;
   left   : trial;
   right  : trial;
 } [@@deriving fields]
 
-let skip = Action.of_string "SKIP"
-let deny = Action.of_string "DENY"
-let is_skip = Action.is skip
-let is_deny = Action.is deny
+type t = rule list
+
+let skip = Skip
+let deny = Deny
 
 let make_trial s = 
   let field = match s with 
@@ -49,7 +45,7 @@ let make_trial s =
     field;
   }
 
-let create ?insn ?left ?right action : t = {
+let make_rule ?insn ?left ?right action  = {
   action; 
   insn  = make_trial insn; 
   left  = make_trial left; 
@@ -91,14 +87,14 @@ module G = struct
       f @@ E.make V.Source p
     | V.Person i as p,Succ ->
       Array.iteri jobs ~f:(fun j job ->
-          if sat_events (expect,workers.(i)) (expect', job) then 
-            f (E.make p (V.Task j)))
+          if sat_events (expect,workers.(i)) (expect', job) 
+          then f (E.make p (V.Task j)))
     | V.Task j as t,Succ ->
       f @@ E.make t V.Sink
     | V.Task j as t,Pred ->
       Array.iteri workers ~f:(fun i worker ->
-          if sat_events (expect, worker) (expect', jobs.(j)) then 
-            f (E.make (V.Person i) t))
+          if sat_events (expect, worker) (expect', jobs.(j)) 
+          then f (E.make (V.Person i) t))
 
   let iter_succ_e = iter Succ
   let iter_pred_e = iter Pred
@@ -130,42 +126,34 @@ let match_events t insn events events' =
   match is_sat_insn t insn with
   | false -> []
   | true -> 
+    let left = Set.diff events events' in
+    let right = Set.diff events' events in
     match is_empty_left t, is_empty_right t with
-    | true, _ ->
-      single_match t.right events' |>
-      List.map ~f:(fun e -> None, Some e)
-    | _, true -> 
-      single_match t.left events |>
-      List.map ~f:(fun e -> Some e, None)
+    | true, _ -> List.map ~f:(fun e -> Right e) (single_match t.right right)
+    | _, true -> List.map ~f:(fun e -> Left e)  (single_match t.left left)
     | _ -> 
-      let workers = t.left, Set.to_array events in      
-      let jobs = t.right, Set.to_array events' in
+      let workers = t.left, Set.to_array left in      
+      let jobs = t.right, Set.to_array right in
       let (flow,_) = FFMF.maxflow (workers, jobs) G.V.Source G.V.Sink  in
       Array.foldi (snd workers) ~init:[] 
         ~f:(fun i acc w ->   
             match Array.findi (snd jobs) ~f:(fun j e ->
                 flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
             | None -> acc 
-            | Some (_,e) -> (Some w, Some e) :: acc)  
+            | Some (_,e) -> Both (w,e) :: acc)  
 
-let remove what from = 
-  List.fold_left ~init:from ~f:Set.remove what
-
-let process t insn events events' : r = 
-  match match_events t insn events events' with 
-  | [] -> Ok (events, events')
-  | res ->
-    let evs, evs' = List.fold_left ~init:([],[]) res
-        ~f:(fun (evs, evs')  -> function
-            | Some e, Some e' -> e :: evs, e' :: evs'
-            | Some e, None -> e :: evs, evs'
-            | None, Some e' -> evs, e' :: evs'
-            | None, None -> evs, evs') in
-  if is_skip t.action then
-    let events = remove evs events in
-    let events' = remove evs' events' in
-    Ok (events, events')
-  else
-    Error (Value.Set.of_list evs, Value.Set.of_list evs')
-
-    
+let denied ts insn events events' = 
+  let rec loop acc ts (evs,evs') = match ts with
+    | [] -> acc
+    | t :: ts' ->
+      let res = match_events t insn evs evs' in
+      match t.action with
+      | Skip -> 
+        List.fold res ~init:(evs, evs')
+          ~f:(fun (evs, evs') -> function
+              | Left e -> Set.remove evs e, evs'
+              | Right e' -> evs, Set.remove evs' e'
+              | Both (e, e') -> Set.remove evs e, Set.remove evs' e') |> 
+        loop acc ts'
+      | Deny -> (t, res)  :: acc in 
+  loop [] ts (events, events') 
