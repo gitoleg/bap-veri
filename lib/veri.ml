@@ -10,6 +10,7 @@ type 'a u = 'a Bil.Result.u
 type 'a r = 'a Bil.Result.r
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
+type policy = Veri_policy.t
 
 let create_move_event tag cell' data' =  
   Value.create tag Move.({cell = cell'; data = data';})
@@ -48,7 +49,16 @@ end
 
 module Events = Value.Set
 
-class context report trace = object(self:'s)
+let apply_policies ps insn events events' = 
+  let open Result in
+  let rec apply ps (evs,evs') = match ps with
+    | [] -> Ok (evs, evs')
+    | p::ps ->
+      Veri_policy.process p insn evs evs' >>=
+      apply ps in
+  apply ps (events, events')
+
+class context polices report trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val report : Veri_report.t = report
   val events = Events.empty
@@ -188,7 +198,7 @@ class ['a] t arch dis is_interesting =
       | Error er ->
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
       | Ok bil -> self#eval bil
-
+          
     method private eval_chunk chunk =
       match memory_of_chunk endian chunk with
       | Error er -> SM.update (fun c -> c#notify_error (`Damaged_chunk er))

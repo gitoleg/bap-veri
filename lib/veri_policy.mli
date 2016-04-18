@@ -7,6 +7,7 @@ open Bap_traces.Std
 type t
 type event = Trace.event
 type events = Value.Set.t
+type set_pair = events * events
 type action
 
 val skip : action
@@ -19,9 +20,9 @@ val match_events: t -> string -> events -> events ->
   (event option * event option) list
 
 (** type [deny_error] list all events that matches to deny rule *)
-type deny_error = events * events
+type deny_error = set_pair
 
-type r = (events * events, deny_error) Result.t
+type r = (set_pair, deny_error) Result.t
 
 (** [process t insn events events] - returns 
     either successful filtered events, either

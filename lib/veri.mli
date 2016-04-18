@@ -3,6 +3,7 @@ open Bap.Std
 open Bap_traces.Std
 
 type error = Veri_error.t
+type policy = Veri_policy.t
 
 module Disasm : sig
   module Dis = Disasm_expert.Basic
@@ -10,7 +11,7 @@ module Disasm : sig
   type t = (asm, kinds) Dis.t
 end
 
-class context: Veri_report.t -> Trace.t -> object('s)
+class context: policy list -> Veri_report.t -> Trace.t -> object('s)
     inherit Veri_traci.context
     method split : 's
     method merge : 's

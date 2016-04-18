@@ -18,11 +18,11 @@ end
 
 type field = Field.t
 type action = Action.t
-
-let skip = Action.of_string "SKIP"
-let deny = Action.of_string "DENY"
-let is_skip = Action.is skip
-let is_deny = Action.is deny
+type event = Trace.event
+type events = Value.Set.t
+type set_pair = events * events 
+type deny_error = set_pair
+type r = (set_pair, deny_error) Result.t
 
 type trial = {
   regexp : Re.re;
@@ -35,6 +35,11 @@ type t = {
   left   : trial;
   right  : trial;
 } [@@deriving fields]
+
+let skip = Action.of_string "SKIP"
+let deny = Action.of_string "DENY"
+let is_skip = Action.is skip
+let is_deny = Action.is deny
 
 let make_trial s = 
   let field = match s with 
@@ -50,9 +55,6 @@ let create ?insn ?left ?right action : t = {
   left  = make_trial left; 
   right = make_trial right; 
 }
-
-type event = Trace.event
-type events = Value.Set.t
 
 let sat e s = Re.execp e.regexp s
 let sat_event e ev = sat e (Value.pps () ev)
@@ -145,10 +147,6 @@ let match_events t insn events events' =
                 flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
             | None -> acc 
             | Some (_,e) -> (Some w, Some e) :: acc)  
-
-
-type deny_error = events * events
-type r = (events * events, deny_error) Result.t
 
 let remove what from = 
   List.fold_left ~init:from ~f:Set.remove what
