@@ -2,57 +2,86 @@ open Core_kernel.Std
 open Graph
 open Bap.Std
 open Bap_traces.Std
+open Regular.Std
 
 module Field = struct
-  type t = string
+  type t = string [@@deriving bin_io, compare, sexp]
   let of_string = ident
   let empty = ""
   let is_empty x = x = empty
 end
 
-type field = Field.t
-type event = Trace.event
+type field = Field.t [@@deriving bin_io, compare, sexp]
+
+module Rule = struct
+  type action = Skip | Deny [@@deriving bin_io, compare, sexp]
+
+  type t = {
+    action : action;
+    insn   : field;
+    left   : field;
+    right  : field;
+  } [@@deriving bin_io, compare, fields, sexp]
+
+  let skip = Skip
+  let deny = Deny
+
+  let create ?insn ?left ?right action  = 
+    let of_opt = 
+      Option.value_map ~default:Field.empty ~f:ident in {
+      action; 
+      insn  = of_opt insn; 
+      left  = of_opt left; 
+      right = of_opt right; 
+    }
+
+  type s = t [@@deriving bin_io, compare, sexp]
+  include Regular.Make(struct
+      type t = s [@@deriving bin_io, compare, sexp]
+      let compare = compare
+      let hash = Hashtbl.hash
+      let module_name = Some "Veri_policy.Rule"
+      let version = "0.1"
+
+      let pp fmt rule = 
+        let act = match rule.action with
+          | Skip -> "Skip"
+          | Deny -> "Deny" in
+        Format.fprintf fmt "%s : %s : %s : %s ;" 
+          act rule.insn rule.left rule.right
+    end)
+end
+
+type event = Trace.event [@@deriving bin_io, sexp]
 type events = Value.Set.t
-type action = Skip | Deny
+type rule = Rule.t [@@deriving bin_io, compare, sexp]
+type trial = Re.re
 
 type matched = 
   | Left of event
   | Right of event
   | Both of event * event
+  [@@deriving bin_io, sexp]
 
-type trial = {
-  regexp : Re.re;
-  field  : Field.t
+type entry = {
+  insn_trial : trial;
+  left_trial : trial;
+  right_trial: trial;
+  rule  : rule;
 }
 
-type rule = {
-  action : action;
-  insn   : trial;
-  left   : trial;
-  right  : trial;
-} [@@deriving fields]
+type t = entry list
 
-type t = rule list
-
-let skip = Skip
-let deny = Deny
-
-let make_trial s = 
-  let field = match s with 
-    | None -> Field.empty
-    | Some s -> s in {
-    regexp = Re.compile (Re_posix.re field);
-    field;
-  }
-
-let make_rule ?insn ?left ?right action  = {
-  action; 
-  insn  = make_trial insn; 
-  left  = make_trial left; 
-  right = make_trial right; 
+let make_entry rule = {
+  insn_trial = Re.compile (Re_posix.re (Rule.insn rule));
+  left_trial = Re.compile (Re_posix.re (Rule.insn rule));
+  right_trial = Re.compile (Re_posix.re (Rule.insn rule));
+  rule;
 }
 
-let sat e s = Re.execp e.regexp s
+let empty = []
+let add t rule : t = make_entry rule :: t
+let sat e s = Re.execp e s
 let sat_event e ev = sat e (Value.pps () ev)
 let sat_events (e, ev) (e', ev') = sat_event e ev && sat_event e' ev'
 
@@ -117,23 +146,25 @@ module FFMF = Flow.Ford_Fulkerson(G)(F)
 let single_match trial events =
   List.filter ~f:(sat_event trial) (Set.to_list events)
 
-let is_empty_insn  t = Field.is_empty t.insn.field
-let is_empty_left  t = Field.is_empty t.left.field
-let is_empty_right t = Field.is_empty t.right.field
-let is_sat_insn t insn = not (is_empty_insn t) && sat t.insn insn
+let is_empty_insn  t = Field.is_empty (Rule.insn t.rule)
+let is_empty_left  t = Field.is_empty (Rule.left t.rule)
+let is_empty_right t = Field.is_empty (Rule.right t.rule)
+let is_sat_insn t insn = not (is_empty_insn t) && sat t.insn_trial insn
 
-let match_events t insn events events' =
+let match_events' t insn events events' =
   match is_sat_insn t insn with
   | false -> []
   | true -> 
     let left = Set.diff events events' in
     let right = Set.diff events' events in
     match is_empty_left t, is_empty_right t with
-    | true, _ -> List.map ~f:(fun e -> Right e) (single_match t.right right)
-    | _, true -> List.map ~f:(fun e -> Left e)  (single_match t.left left)
+    | true, _ -> 
+      List.map ~f:(fun e -> Right e) (single_match t.right_trial right)
+    | _, true -> 
+      List.map ~f:(fun e -> Left e) (single_match t.left_trial left)
     | _ -> 
-      let workers = t.left, Set.to_array left in      
-      let jobs = t.right, Set.to_array right in
+      let workers = t.left_trial, Set.to_array left in      
+      let jobs = t.right_trial, Set.to_array right in
       let (flow,_) = FFMF.maxflow (workers, jobs) G.V.Source G.V.Sink  in
       Array.foldi (snd workers) ~init:[] 
         ~f:(fun i acc w ->   
@@ -142,18 +173,24 @@ let match_events t insn events events' =
             | None -> acc 
             | Some (_,e) -> Both (w,e) :: acc)  
 
-let denied ts insn events events' = 
-  let rec loop acc ts (evs,evs') = match ts with
+let match_events rule insn events events' =
+  match_events' (make_entry rule) insn events events'
+
+let denied entries insn events events' = 
+  let entries = List.rev entries in
+  let rec loop acc entries (evs,evs') = match entries with
     | [] -> acc
-    | t :: ts' ->
-      let res = match_events t insn evs evs' in
-      match t.action with
-      | Skip -> 
-        List.fold res ~init:(evs, evs')
+    | e :: es ->
+      match match_events' e insn evs evs' with
+      | [] -> loop acc es (evs,evs')
+      | matched -> 
+        let acc' = match Rule.action e.rule with
+          | Rule.Skip -> acc
+          | Rule.Deny -> (e.rule, matched) :: acc in
+        List.fold matched ~init:(evs, evs')
           ~f:(fun (evs, evs') -> function
               | Left e -> Set.remove evs e, evs'
               | Right e' -> evs, Set.remove evs' e'
-              | Both (e, e') -> Set.remove evs e, Set.remove evs' e') |> 
-        loop acc ts'
-      | Deny -> (t, res)  :: acc in 
-  loop [] ts (events, events') 
+              | Both (e, e') -> Set.remove evs e, Set.remove evs' e') |>
+        loop acc' es in
+  loop [] entries (events, events') 
