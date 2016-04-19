@@ -58,9 +58,9 @@ type rule = Rule.t [@@deriving bin_io, compare, sexp]
 type trial = Re.re
 
 type matched = 
-  | Left of event
-  | Right of event
-  | Both of event * event
+  | Left of event list
+  | Right of event list 
+  | Both of (event * event) list 
   [@@deriving bin_io, sexp]
 
 type entry = {
@@ -146,6 +146,29 @@ module FFMF = Flow.Ford_Fulkerson(G)(F)
 let single_match trial events =
   List.filter ~f:(sat_event trial) (Set.to_list events)
 
+let match_right t events = 
+  match single_match t.right_trial events with 
+  | [] -> None
+  | ms -> Some (Right ms)  
+
+let match_left t events = 
+  match single_match t.left_trial events with 
+  | [] -> None
+  | ms -> Some (Left ms)  
+
+let match_both t left right = 
+  let workers = t.left_trial, Set.to_array left in      
+  let jobs = t.right_trial, Set.to_array right in
+  let (flow,_) = FFMF.maxflow (workers, jobs) G.V.Source G.V.Sink  in
+  Array.foldi (snd workers) ~init:[] 
+    ~f:(fun i acc w ->   
+        match Array.findi (snd jobs) ~f:(fun j e ->
+            flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
+        | None -> acc 
+        | Some (_,e) -> (w, e) :: acc) |> function 
+  | [] -> None
+  | ms -> Some (Both ms)
+
 let is_empty_insn  t = Field.is_empty (Rule.insn t.rule)
 let is_empty_left  t = Field.is_empty (Rule.left t.rule)
 let is_empty_right t = Field.is_empty (Rule.right t.rule)
@@ -153,28 +176,28 @@ let is_sat_insn t insn = not (is_empty_insn t) && sat t.insn_trial insn
 
 let match_events' t insn events events' =
   match is_sat_insn t insn with
-  | false -> []
+  | false -> None
   | true -> 
     let left = Set.diff events events' in
     let right = Set.diff events' events in
     match is_empty_left t, is_empty_right t with
-    | true, _ -> 
-      List.map ~f:(fun e -> Right e) (single_match t.right_trial right)
-    | _, true -> 
-      List.map ~f:(fun e -> Left e) (single_match t.left_trial left)
-    | _ -> 
-      let workers = t.left_trial, Set.to_array left in      
-      let jobs = t.right_trial, Set.to_array right in
-      let (flow,_) = FFMF.maxflow (workers, jobs) G.V.Source G.V.Sink  in
-      Array.foldi (snd workers) ~init:[] 
-        ~f:(fun i acc w ->   
-            match Array.findi (snd jobs) ~f:(fun j e ->
-                flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
-            | None -> acc 
-            | Some (_,e) -> Both (w,e) :: acc)  
+    | true, _ -> match_right t right
+    | _, true -> match_left t left
+    | _ -> match_both t left right
 
 let match_events rule insn events events' =
   match_events' (make_entry rule) insn events events'
+
+let remove what from = 
+  let not_exists e = not (List.exists what ~f:(fun e' -> e = e')) in
+  Set.filter ~f:not_exists from 
+
+let remove_matched events events' = function
+  | Left evs -> remove evs events, events'
+  | Right evs -> events, remove evs events'
+  | Both pairs -> 
+    let evs, evs' = List.unzip pairs in
+    remove evs events, remove evs' events'
 
 let denied entries insn events events' = 
   let entries = List.rev entries in
@@ -182,15 +205,11 @@ let denied entries insn events events' =
     | [] -> acc
     | e :: es ->
       match match_events' e insn evs evs' with
-      | [] -> loop acc es (evs,evs')
-      | matched -> 
+      | None -> loop acc es (evs,evs')
+      | Some matched -> 
         let acc' = match Rule.action e.rule with
           | Rule.Skip -> acc
           | Rule.Deny -> (e.rule, matched) :: acc in
-        List.fold matched ~init:(evs, evs')
-          ~f:(fun (evs, evs') -> function
-              | Left e -> Set.remove evs e, evs'
-              | Right e' -> evs, Set.remove evs' e'
-              | Both (e, e') -> Set.remove evs e, Set.remove evs' e') |>
+        remove_matched evs evs' matched |> 
         loop acc' es in
   loop [] entries (events, events') 

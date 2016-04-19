@@ -22,9 +22,9 @@ module Rule : sig
 end
 
 type matched =
-  | Left of event
-  | Right of event
-  | Both of event * event
+  | Left of event list
+  | Right of event list
+  | Both of (event * event) list
 [@@deriving bin_io, sexp]
 
 type rule = Rule.t [@@deriving bin_io, sexp]
@@ -32,5 +32,5 @@ type t
 
 val empty : t
 val add : t -> rule -> t
-val match_events: rule -> string -> events -> events -> matched list
-val denied: t -> string -> events -> events -> (rule * matched list)  list
+val match_events: rule -> string -> events -> events -> matched option
+val denied: t -> string -> events -> events -> (rule * matched) list
