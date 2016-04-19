@@ -3,16 +3,15 @@ open Bap.Std
 open Bap_traces.Std
 open Regular.Std
 
+open Veri_policy
+module Rules = Rule.Map
+
 type t [@@deriving bin_io, sexp]
-
-type events = Value.Set.t
-
-(** events that occurred only on the left and only on the right *)
-type frame_diff = events * events [@@deriving bin_io, compare, sexp]
+type frame = matched list Rules.t [@@deriving bin_io, sexp]
 
 val create: unit -> t
-val update: t -> string -> frame_diff -> t
-val frames: t -> (string * frame_diff list) list
+val update: t -> string -> rule -> matched -> t
+val frames: t -> (string * frame) list
 val notify: t -> Veri_error.t -> t
 val errors: t -> Veri_error.t list
 

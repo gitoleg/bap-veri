@@ -49,14 +49,7 @@ end
 
 module Events = Value.Set
 
-let print ms = 
-  let open Veri_policy in
-  List.iter (fun (rule, ms) -> match m with 
-      | Left ev -> 
-
- )
-
-class context policies report trace = object(self:'s)
+class context policy report trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val report : Veri_report.t = report
   val events = Events.empty
@@ -74,11 +67,11 @@ class context policies report trace = object(self:'s)
         | Some name ->
           let events = Option.(value_exn self#other)#events in
           let events' = self#events in
-          match Veri_policy.denied policies name events events' with
+          match Veri_policy.denied policy name events events' with
           | [] -> report 
-          | ms -> 
-            print ms;
-            report in
+          | results -> 
+             List.fold results ~init:report 
+               ~f:(fun rep (rule, ms) -> Veri_report.update rep name rule ms) in
     {<other = None; error = None; descr = None; 
       events = Events.empty; report = report >}
 

@@ -83,7 +83,9 @@ let empty = []
 let add t rule : t = make_entry rule :: t
 let sat e s = Re.execp e s
 let sat_event e ev = sat e (Value.pps () ev)
-let sat_events (e, ev) (e', ev') = sat_event e ev && sat_event e' ev'
+let sat_events (e, ev) (e', ev') = 
+  Value.typeid ev = Value.typeid ev' &&
+  sat_event e ev && sat_event e' ev'
 
 module G = struct
   type g = trial * event array

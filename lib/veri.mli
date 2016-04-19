@@ -11,7 +11,7 @@ module Disasm : sig
   type t = (asm, kinds) Dis.t
 end
 
-class context: policy list -> Veri_report.t -> Trace.t -> object('s)
+class context: policy -> Veri_report.t -> Trace.t -> object('s)
     inherit Veri_traci.context
     method split : 's
     method merge : 's
