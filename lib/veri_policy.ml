@@ -72,19 +72,22 @@ type entry = {
 
 type t = entry list
 
+let make_trial s = Re.compile (Re_posix.re s) 
+
 let make_entry rule = {
-  insn_trial = Re.compile (Re_posix.re (Rule.insn rule));
-  left_trial = Re.compile (Re_posix.re (Rule.insn rule));
-  right_trial = Re.compile (Re_posix.re (Rule.insn rule));
+  insn_trial = make_trial (Rule.insn rule);
+  left_trial = make_trial (Rule.left rule);
+  right_trial = make_trial (Rule.right rule);
   rule;
 }
 
 let empty = []
 let add t rule : t = make_entry rule :: t
 let sat e s = Re.execp e s
-let sat_event e ev = sat e (Value.pps () ev)
+let sat_event e ev = sat e (Value.pps () ev) 
+
 let sat_events (e, ev) (e', ev') = 
-  Value.typeid ev = Value.typeid ev' &&
+  Value.tagname ev = Value.tagname ev' &&
   sat_event e ev && sat_event e' ev'
 
 module G = struct

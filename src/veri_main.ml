@@ -35,9 +35,11 @@ let eval file f =
 let policy = 
   let open Veri_policy in 
   let rules = [ 
-    Rule.create ~insn:" *" ~left:".FLAGS=> *" Rule.skip;  
-    Rule.create ~insn:" *" ~left:" *" Rule.deny;  
-    Rule.create ~insn:" *" ~right:" *" Rule.deny;  
+    Rule.create ~insn:" *" ~left:".FLAGS => *" Rule.skip;
+    Rule.create ~insn:" *" ~right:"v.* => *" Rule.skip;
+    Rule.create ~insn:" *" ~right:"v.* <= *" Rule.skip;
+    Rule.create ~insn:" *" ~left:" *" Rule.deny;
+    Rule.create ~insn:" *" ~right:" *" Rule.deny;
   ] in
   List.fold ~init:empty ~f:add rules
 
