@@ -35,6 +35,10 @@ let eval file f =
 let policy = 
   let open Veri_policy in 
   let rules = [ 
+    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"CF => *" Rule.skip;
+    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"NF => *" Rule.skip;
+    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"VF => *" Rule.skip;
+    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"ZF => *" Rule.skip;
     Rule.create ~insn:" *" ~left:".FLAGS => *" Rule.skip;
     Rule.create ~insn:" *" ~right:"v.* => *" Rule.skip;
     Rule.create ~insn:" *" ~right:"v.* <= *" Rule.skip;

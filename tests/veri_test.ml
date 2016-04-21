@@ -50,18 +50,25 @@ let eval_trace trace =
   Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
       let dis = Dis.store_asm dis |> Dis.store_kinds in          
       let report = Veri_report.create () in
-      let ctxt = new Veri.context [] report trace in
+      let ctxt = new Veri.context Veri_policy.empty report trace in
       let veri  = new Veri.t arch dis (fun _ -> true) in
       let ctxt' = 
         Monad.State.exec (veri#eval_trace trace) ctxt in
       Ok ctxt'#report)
 
+let test_policy =
+  let open Veri_policy in
+  let rules = [
+    Rule.create ~insn:" *" ~left:" *" Rule.deny;
+  ] in 
+  List.fold ~init:empty ~f:add rules
+
 let hd_frames = function
   | [] -> None
-  | (name, diffs) :: _ -> 
-    match diffs with
+  | (_, frame) :: _ -> 
+    match Map.to_alist frame with 
     | [] -> None
-    | hd ::_ -> Some (name, hd)
+    | (rule, ms) ::_ -> List.hd ms
 
 let check_trace pref trace expected =
   match eval_trace trace with 
@@ -73,10 +80,13 @@ let check_trace pref trace expected =
     | None -> 
       let s = Printf.sprintf "%s: empty frames" pref in
       assert_false s
-    | Some (name, (left,_)) ->
-      let diff = Set.to_list left in
-      let s = Printf.sprintf "%s: diff equality check" pref in
-      assert_bool s (is_equal_events expected diff)
+    | Some ms -> match ms with
+      | Veri_policy.Left left -> 
+        let s = Printf.sprintf "%s: diff equality check" pref in
+        assert_bool s (is_equal_events expected left)
+      | _ ->
+        let s = Printf.sprintf "unexpected match" in
+        assert_false s
 
 (** MOV32rr: { EAX := low:32[ESP] } *)
 let test_reg ctxt = 
