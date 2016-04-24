@@ -12,12 +12,12 @@ let stub = fun _ -> SM.return ()
 class context trace =
  object(self:'s)
     inherit Bili.context
-    val events = Trace.events trace 
+    val events = Trace.read_events trace 
     method next_event = match Seq.next events with
       | None -> None 
       | Some (ev,evs) -> Some ({<events = evs; >}, ev)
 
-    method with_events trace = {<events = Trace.events trace >}
+    method with_events trace = {<events = Trace.read_events trace >}
   end
 
 let data_size mv = 

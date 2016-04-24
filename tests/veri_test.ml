@@ -35,11 +35,19 @@ let make_chunk addr' data' =
 
 let make_event tag value = Value.create tag value
 
+let make_events_stream evs = 
+  let evs' = ref evs in
+  let rec next () = match !evs' with
+    | [] -> None
+    | hd :: tl -> 
+      evs' := tl;
+      Some (Ok hd) in
+  next
+
 let make_trace code real_evs = 
-  let events = Seq.of_list (code::real_evs) in
-  let trace = Trace.create test_tool in
-  let trace = Trace.set_attr trace Meta.arch arch in
-  Trace.append trace events 
+  let next = make_events_stream (code::real_evs) in
+  let trace = Trace.create test_tool next in
+  Trace.set_attr trace Meta.arch arch
 
 let is_equal_events evs evs' =
   let is_exists ev = List.exists ~f:(fun ev' -> ev = ev') evs' in

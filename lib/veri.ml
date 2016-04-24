@@ -202,7 +202,6 @@ class ['a] t arch dis is_interesting =
         | Ok insn -> self#eval_insn insn
 
     method! eval_event ev = 
-      Format.(fprintf std_formatter "came: %a\n" Value.pp ev);
       let update () = SM.update (fun c -> c#register_event ev) in
       let is_after_code () = 
         SM.get () >>= fun c ->
