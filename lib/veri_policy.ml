@@ -75,8 +75,10 @@ type t = entry list
 
 let make_trial s = Pcre.regexp ~flags:[`ANCHORED] s
 
+let sep = " : "
+
 let make_both_trial rule = 
-  let s = Printf.sprintf "%s %s" (Rule.left rule) (Rule.right rule) in
+  let s = String.concat ~sep [Rule.left rule; Rule.right rule] in
   make_trial s
 
 let make_entry rule = {
@@ -93,11 +95,11 @@ let sat rex s = Pcre.pmatch ~rex s
 let sat_event e ev = sat e (Value.pps () ev) 
 
 let string_of_events ev ev' = 
-  Printf.sprintf "%s %s" (Value.pps () ev) (Value.pps () ev')
-
+  String.concat ~sep [Value.pps () ev; Value.pps () ev']
+  
 let sat_events e ev ev' = 
   Value.typeid ev = Value.typeid ev' &&
-  sat e (string_of_events ev ev')
+  sat e (string_of_events ev ev') 
 
 module G = struct
   type t = trial * event array * event array
@@ -212,7 +214,7 @@ let remove_matched events events' = function
     let evs, evs' = List.unzip pairs in
     remove evs events, remove evs' events'
 
-let denied entries insn events events' = 
+let denied entries insn events events' =   
   let entries = List.rev entries in
   let rec loop acc entries (evs,evs') = match entries with
     | [] -> acc
