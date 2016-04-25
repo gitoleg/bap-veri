@@ -55,7 +55,7 @@ end
 type event = Trace.event [@@deriving bin_io, sexp]
 type events = Value.Set.t
 type rule = Rule.t [@@deriving bin_io, compare, sexp]
-type trial = Re.re
+type trial = Pcre.regexp
 
 type matched = 
   | Left of event list
@@ -67,32 +67,40 @@ type entry = {
   insn_trial : trial;
   left_trial : trial;
   right_trial: trial;
+  both_trial : trial;
   rule  : rule;
 }
 
 type t = entry list
 
-let make_trial s = Re.compile (Re_posix.re s) 
+let make_trial s = Pcre.regexp ~flags:[`ANCHORED] s
+
+let make_both_trial rule = 
+  let s = Printf.sprintf "%s %s" (Rule.left rule) (Rule.right rule) in
+  make_trial s
 
 let make_entry rule = {
   insn_trial = make_trial (Rule.insn rule);
   left_trial = make_trial (Rule.left rule);
   right_trial = make_trial (Rule.right rule);
+  both_trial = make_both_trial rule;
   rule;
 }
 
 let empty = []
 let add t rule : t = make_entry rule :: t
-let sat e s = Re.execp e s
+let sat rex s = Pcre.pmatch ~rex s
 let sat_event e ev = sat e (Value.pps () ev) 
 
-let sat_events (e, ev) (e', ev') = 
-  Value.tagname ev = Value.tagname ev' &&
-  sat_event e ev && sat_event e' ev'
+let string_of_events ev ev' = 
+  Printf.sprintf "%s %s" (Value.pps () ev) (Value.pps () ev')
+
+let sat_events e ev ev' = 
+  Value.typeid ev = Value.typeid ev' &&
+  sat e (string_of_events ev ev')
 
 module G = struct
-  type g = trial * event array
-  type t = g * g
+  type t = trial * event array * event array
   module V = struct
     type t = Source | Sink | Person of int | Task of int [@@deriving compare]
     let hash = Hashtbl.hash
@@ -107,7 +115,7 @@ module G = struct
   end
   type dir = Succ | Pred
 
-  let iter dir f ((expect, workers), (expect', jobs)) v = 
+  let iter dir f (expect, workers, jobs) v = 
     match v,dir with
     | V.Source,Pred -> ()
     | V.Source,Succ ->
@@ -121,13 +129,13 @@ module G = struct
       f @@ E.make V.Source p
     | V.Person i as p,Succ ->
       Array.iteri jobs ~f:(fun j job ->
-          if sat_events (expect,workers.(i)) (expect', job) 
+          if sat_events expect workers.(i) job
           then f (E.make p (V.Task j)))
     | V.Task j as t,Succ ->
       f @@ E.make t V.Sink
     | V.Task j as t,Pred ->
       Array.iteri workers ~f:(fun i worker ->
-          if sat_events (expect, worker) (expect', jobs.(j)) 
+          if sat_events expect worker jobs.(j)
           then f (E.make (V.Person i) t))
 
   let iter_succ_e = iter Succ
@@ -162,12 +170,12 @@ let match_left t events =
   | ms -> Some (Left ms)  
 
 let match_both t left right = 
-  let workers = t.left_trial, Set.to_array left in      
-  let jobs = t.right_trial, Set.to_array right in
-  let (flow,_) = FFMF.maxflow (workers, jobs) G.V.Source G.V.Sink  in
-  Array.foldi (snd workers) ~init:[] 
+  let workers = Set.to_array left in      
+  let jobs = Set.to_array right in
+  let (flow,_) = FFMF.maxflow (t.both_trial, workers, jobs) G.V.Source G.V.Sink  in
+  Array.foldi workers ~init:[] 
     ~f:(fun i acc w ->   
-        match Array.findi (snd jobs) ~f:(fun j e ->
+        match Array.findi jobs ~f:(fun j e ->
             flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
         | None -> acc 
         | Some (_,e) -> (w, e) :: acc) |> function 

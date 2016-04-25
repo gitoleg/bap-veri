@@ -16,7 +16,7 @@ Library veri
   FindLibName:    bap-veri
   Modules:        Veri, Veri_error, Veri_report, Veri_traci, Veri_policy
   CompiledObject: best
-  BuildDepends:   bap, bap-traces, ppx_jane
+  BuildDepends:   bap, bap-traces, ppx_jane, pcre
 
 Library veri_test
   Path:            tests

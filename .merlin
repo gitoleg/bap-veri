@@ -11,3 +11,4 @@ PKG oUnit
 PKG bap
 PKG bap-traces
 PKG bap-piqi-traces
+PKG pcre
