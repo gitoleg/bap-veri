@@ -71,28 +71,25 @@ let eval_trace trace =
         Monad.State.exec (veri#eval_trace trace) ctxt in
       Ok ctxt'#report)
 
-let hd_frames = function
-  | [] -> None
-  | (_, frame) :: _ -> 
-    match Map.to_alist frame with 
-    | [] -> None
-    | (rule, ms) ::_ -> List.hd ms
+let first_left_match frames = 
+  let open Option in
+  List.hd frames >>= fun (_, frame) ->
+  List.hd (Map.to_alist frame) >>= fun (rule, ms) ->
+  List.hd ms >>= function
+  | Veri_policy.Left left -> Some left
+  | _ -> None
 
-let check_trace pref trace expected =
+let check_left_diff pref trace expected =
   match eval_trace trace with 
   | Error er -> 
     assert_false (Printf.sprintf "%s: %s" pref (Error.to_string_hum er))
   | Ok report ->
-    match hd_frames (Veri_report.frames report) with 
-    | None -> 
-      assert_false (Printf.sprintf "%s: empty frames" pref)
-    | Some ms -> match ms with
-      | Veri_policy.Left left -> 
-        let s = Printf.sprintf "%s: diff equality check" pref in
-        assert_bool s (is_equal_events expected left)
-      | _ ->
-        let s = Printf.sprintf "unexpected match" in
-        assert_false s
+    match first_left_match (Veri_report.frames report) with 
+    | None ->
+      assert_false (Printf.sprintf "%s: no left match" pref)
+    | Some left ->
+      let s = Printf.sprintf "%s: diff equality check" pref in
+      assert_bool s (is_equal_events expected left)
 
 (** MOV32rr: { EAX := low:32[ESP] } *)
 let test_reg ctxt = 
@@ -106,7 +103,7 @@ let test_reg ctxt =
   let real_evs = [e0;e1;e2;e3;e4;e5;] in
   let trace = make_trace code real_evs in
   let expected_diff = [e0; e1; e4; e5] in
-  check_trace "test_reg" trace expected_diff
+  check_left_diff "test_reg" trace expected_diff
       
 (** MOV32mr: 
     { 
@@ -124,7 +121,7 @@ let test_mem_store ctxt =
   let real_events = [e0;e1;e2;e3;e4;e5;] in
   let trace = make_trace code real_events in
   let expected_diff = [e0; e4; e5] in
-  check_trace "test_mem_store" trace expected_diff
+  check_left_diff "test_mem_store" trace expected_diff
 
 (** MOV32rm : { EBX := mem32[low:32[ESP], el]:u32 }*)
 let test_mem_load ctxt = 
@@ -138,7 +135,7 @@ let test_mem_load ctxt =
   let real_evs = [e0;e1;e2;e3;e4;e5;] in
   let trace = make_trace code real_evs in
   let expected_diff = [e0; e4; e5] in  
-  check_trace "test_mem_load" trace expected_diff
+  check_left_diff "test_mem_load" trace expected_diff
 
 let test_backref_match ctxt = 
   let open Veri_policy in
