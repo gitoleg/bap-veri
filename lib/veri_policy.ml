@@ -97,9 +97,9 @@ let sat_event e ev = sat e (Value.pps () ev)
 let string_of_events ev ev' = 
   String.concat ~sep [Value.pps () ev; Value.pps () ev']
   
-let sat_events e ev ev' = 
+let sat_events e ev ev' =
   Value.typeid ev = Value.typeid ev' &&
-  sat e (string_of_events ev ev') 
+  sat e (string_of_events ev ev')
 
 module G = struct
   type t = trial * event array * event array

@@ -9,14 +9,14 @@ License:     MIT
 Copyrights:  (C) 2016 Carnegie Mellon University
 Plugins:     META (0.4), DevFiles (0.4)
 BuildTools:  ocamlbuild
-BuildDepends: core_kernel
+BuildDepends: core_kernel, ppx_jane
 
 Library veri
   Path:           lib
   FindLibName:    bap-veri
   Modules:        Veri, Veri_error, Veri_report, Veri_traci, Veri_policy
   CompiledObject: best
-  BuildDepends:   bap, bap-traces, ppx_jane, pcre
+  BuildDepends:   bap, bap-traces, pcre
 
 Library veri_test
   Path:            tests
@@ -37,7 +37,7 @@ Executable run_tests
   MainIs:         run_tests.ml
   Install:        false
   Build$:         flag(tests)
-  BuildDepends:   bap, bap-traces, bap.plugins, oUnit, findlib.dynload
+  BuildDepends:   bap, bap-traces, bap.plugins, oUnit, findlib.dynload, pcre
   CompiledObject: best
 
 Test veri_test

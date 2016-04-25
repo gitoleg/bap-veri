@@ -54,22 +54,22 @@ let is_equal_events evs evs' =
   List.length evs = List.length evs' &&
   List.for_all ~f:is_exists evs
 
-let eval_trace trace =
-  Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
-      let dis = Dis.store_asm dis |> Dis.store_kinds in          
-      let report = Veri_report.create () in
-      let ctxt = new Veri.context Veri_policy.empty report trace in
-      let veri  = new Veri.t arch dis (fun _ -> true) in
-      let ctxt' = 
-        Monad.State.exec (veri#eval_trace trace) ctxt in
-      Ok ctxt'#report)
-
 let test_policy =
   let open Veri_policy in
   let rules = [
     Rule.create ~insn:" *" ~left:" *" Rule.deny;
   ] in 
   List.fold ~init:empty ~f:add rules
+
+let eval_trace trace =
+  Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
+      let dis = Dis.store_asm dis |> Dis.store_kinds in          
+      let report = Veri_report.create () in
+      let ctxt = new Veri.context test_policy report trace in
+      let veri  = new Veri.t arch dis (fun _ -> true) in
+      let ctxt' = 
+        Monad.State.exec (veri#eval_trace trace) ctxt in
+      Ok ctxt'#report)
 
 let hd_frames = function
   | [] -> None
@@ -81,13 +81,11 @@ let hd_frames = function
 let check_trace pref trace expected =
   match eval_trace trace with 
   | Error er -> 
-    let s = Printf.sprintf "%s: %s" pref (Error.to_string_hum er) in
-    assert_false s 
+    assert_false (Printf.sprintf "%s: %s" pref (Error.to_string_hum er))
   | Ok report ->
     match hd_frames (Veri_report.frames report) with 
     | None -> 
-      let s = Printf.sprintf "%s: empty frames" pref in
-      assert_false s
+      assert_false (Printf.sprintf "%s: empty frames" pref)
     | Some ms -> match ms with
       | Veri_policy.Left left -> 
         let s = Printf.sprintf "%s: diff equality check" pref in
@@ -142,11 +140,31 @@ let test_mem_load ctxt =
   let expected_diff = [e0; e4; e5] in  
   check_trace "test_mem_load" trace expected_diff
 
+let test_backref_match ctxt = 
+  let open Veri_policy in
+  let rule = 
+    Rule.create 
+      ~insn:" *" 
+      ~left:"(.*) => 0x282:32" 
+      ~right:"(\\1) => (.*)" Rule.skip in
+  let e0 = make_event register_read (make_reg "EFLAGS" 0x282) in
+  let e0' = make_event register_read (make_reg "EFLAGS" 0x283) in
+  let e1 = make_event memory_load (make_mem 0xF6FFEDDC 0xF67E17CE) in
+  let e2 = make_event register_write (make_reg "EBX" 0xF67E17CE) in
+  let events = Value.Set.of_list [e0; e1; e2] in
+  let events' = Value.Set.of_list [e2; e1; e0'] in
+  match match_events rule "insn name" events events' with
+  | None -> assert_false "test back reference match empty"
+  | Some matched -> 
+    let expected = Both [e0, e0'; ] in
+    assert_equal ~ctxt matched expected
+
 let suite () =
-  "Veri test reg" >:::
+  "Veri test" >:::
   [
     "reg test"        >:: test_reg;
     "mem store test"  >:: test_mem_store;
     "mem load test"   >:: test_mem_load;
+    "test backref"    >:: test_backref_match;
   ]
   
