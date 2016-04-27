@@ -23,6 +23,9 @@ class context: policy -> Veri_report.t -> Trace.t -> object('s)
     method set_description: string -> 's
     method notify_error: error -> 's
     method backup: 's -> 's
+    method set_bil : bil -> 's
+    method set_code : string -> 's
+    method next : Veri_report.t -> 's
   end
 
 class ['a] t : arch -> Disasm.t -> (Trace.event -> bool) -> object('s)

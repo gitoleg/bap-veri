@@ -26,7 +26,9 @@ let create_mem_load  = create_move_event Event.memory_load
 let create_reg_read  = create_move_event Event.register_read
 let create_reg_write = create_move_event Event.register_write
 let find_reg_read = find Event.register_read
+let find_reg_write = find Event.register_write
 let find_mem_load = find Event.memory_load
+let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
 module Disasm = struct  
@@ -49,6 +51,32 @@ end
 
 module Events = Value.Set
 
+let pp_ev fmt ev = Format.fprintf fmt "%a; " Value.pp ev
+
+let print_events pref evs = 
+  Format.(fprintf std_formatter "%s: " pref);
+  List.iter evs ~f:(pp_ev Format.std_formatter);
+  Format.print_newline ()
+
+let pp_match (rule, ms) = 
+  let open Veri_policy in
+  Format.fprintf Format.std_formatter "%a\n" Rule.pp rule;
+  match ms with
+  | Left evs -> print_events "left" evs
+  | Right evs -> print_events "right" evs
+  | Both pairs ->
+    List.iter ~f:(fun (ev, ev') ->
+        Format.fprintf Format.std_formatter "%a, %a;  "
+          Value.pp ev Value.pp ev') pairs;
+    Format.print_newline ()
+
+let pp_matches ms = List.iter ~f:pp_match ms
+
+let pp_bytes fmt s =
+  let pp fmt s =
+    String.iter ~f:(fun c -> Format.fprintf fmt "%X@ " (Char.to_int c)) s in
+  Format.fprintf fmt "@[<hv>%a@]" pp s
+
 class context policy report trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val report : Veri_report.t = report
@@ -56,6 +84,24 @@ class context policy report trace = object(self:'s)
   val other = None
   val descr : string option = None
   val error : error option = None
+  val bil   : bil option = None
+  val code  : string option = None
+    
+  method private print_bil =
+    match bil with 
+    | None -> ()
+    | Some bil ->
+      Format.(fprintf std_formatter "%a\n" Bil.pp bil)
+
+  method private print_code = 
+    match code with 
+    | None -> () 
+    | Some code -> 
+      Format.(fprintf std_formatter "%a\n" pp_bytes code)
+        
+  method next report =
+    {<other = None; error = None; descr = None; bil = None; code = None;
+      events = Events.empty; report = report >}
 
   method merge: 's =
     let report =
@@ -70,10 +116,19 @@ class context policy report trace = object(self:'s)
           match Veri_policy.denied policy name events events' with
           | [] -> report 
           | results -> 
-             List.fold results ~init:report 
+            let () = Format.(fprintf std_formatter "%s:\n" name) in
+            self#print_bil;
+            self#print_code;
+            let () = print_events "real" (Set.to_list events) in
+            let () = print_events "fake" (Set.to_list events') in
+            pp_matches results;
+            Format.print_newline ();
+            List.fold results ~init:report 
                ~f:(fun rep (rule, ms) -> Veri_report.update rep name rule ms) in
-    {<other = None; error = None; descr = None; 
-      events = Events.empty; report = report >}
+    let c = Option.(value_exn self#other) in
+    c#next report
+    (* {<other = None; error = None; descr = None; bil = None; code = None; *)
+    (*   events = Events.empty; report = report >} *)
 
   method replay =
     let new_i = Option.value_exn other in
@@ -87,11 +142,13 @@ class context policy report trace = object(self:'s)
   method register_event ev = {< events = Set.add events ev >}
   method notify_error er = {<error = Some er >}
   method backup someone = {<other = Some someone; events = Events.empty >}
+  method set_bil bil = {< bil = Some bil >}
+  method set_code code = {< code = Some code >}
 end
 
 let target_info arch = 
   let module Target = (val target_of_arch arch) in
-  Target.CPU.mem, Target.lift
+  Target.CPU.mem, Target.lift 
 
 let memory_of_chunk endian chunk = 
   Bigstring.of_string (Chunk.data chunk) |>
@@ -100,6 +157,11 @@ let memory_of_chunk endian chunk =
 let other_events c = match c#other with 
   | None -> []
   | Some c -> Set.to_list c#events
+
+let self_events c = Set.to_list c#events
+
+let same_var var mv = var = Move.cell mv
+let same_addr addr mv = addr = Move.cell mv
 
 class ['a] t arch dis is_interesting =
   let endian = Arch.endian arch in
@@ -112,33 +174,65 @@ class ['a] t arch dis is_interesting =
     method private update_event ev =
       if is_interesting ev then SM.update (fun c -> c#register_event ev)
       else SM.return () 
-
+          
+    (** [resolve_var var] - returns a result, bound with [var].
+        Sequence of searches is the following: 
+        1) among events that occured at current step, i.e. between two
+           code_exec events, in the same context, with the same variable;
+        2) among events that occures at current step, i.e. between two
+           code_exec events, in other context, with the same variable;
+        3) in current context. 
+        Exception only for mem_var, that is searched in context. *)
     method private resolve_var : var -> 'a r = fun var ->
+      if var = mem_var then super#lookup var
+      else
+        SM.get () >>= fun ctxt ->
+        match find_reg_read (self_events ctxt) (same_var var) with
+        | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+        | None -> 
+          match find_reg_read (other_events ctxt) (same_var var) with
+          | None -> super#lookup var
+          | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+
+    method private resolve_var_old : var -> 'a r = fun var ->
       super#lookup var >>= fun r ->
       match value r with 
       | Bil.Mem _ | Bil.Imm _ -> SM.return r
       | Bil.Bot -> 
         SM.get () >>= fun ctxt ->
-        let same_var mv = Move.cell mv = var in
-        match find_reg_read (other_events ctxt) same_var with
+        match find_reg_read (other_events ctxt) (same_var var) with
         | None -> super#lookup var
         | Some mv -> self#eval_exp (Bil.int (Move.data mv))
 
     method private emit_reg_read var data : ' u = 
+      (* Format.(fprintf std_formatter "emit for %s %a\n" (Var.name var) Word.pp data); *)
       self#update_event (create_reg_read var data)
 
+    (** Sequence of searches starts from searching in self events, if it is was
+        write access to given variable at current step. And if it was, then no
+        read events emitted. *)
     method! lookup var : 'a r =
-      self#resolve_var var >>= fun r ->
-      match value r with
-      | Bil.Imm data ->
-        self#emit_reg_read var data >>= fun () ->
-        SM.return r
-      | Bil.Mem _ | Bil.Bot -> SM.return r
+      (* Format.(fprintf std_formatter "lookup %s\n" (Var.name var)); *)
+      SM.get () >>= fun ctxt ->
+      match find_reg_write (self_events ctxt) (same_var var) with
+      | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+      | None ->
+        self#resolve_var var >>= fun r ->
+        match value r with
+        | Bil.Imm data ->
+          if not (Var.is_virtual var) then
+            self#emit_reg_read var data >>= fun () ->
+            SM.return r
+          else SM.return r
+        | Bil.Mem _ | Bil.Bot -> SM.return r
 
     method! update var result : 'a u =
       super#update var result >>= fun () ->
       match value result with
-      | Bil.Imm data -> self#update_event (create_reg_write var data)
+      | Bil.Imm data -> 
+        if not (Var.is_virtual var) then
+          self#update_event (create_reg_write var data)
+        else SM.return ()
       | Bil.Mem _ | Bil.Bot -> SM.return ()
 
     method private eval_mem_event tag addr data : 'a e =
@@ -149,33 +243,58 @@ class ['a] t arch dis is_interesting =
       | _ -> SM.return None
 
     method! eval_store ~mem ~addr data endian size =
-        super#eval_store ~mem ~addr data endian size >>= fun r ->
-        self#eval_exp addr >>= fun addr ->
-        self#eval_exp data >>= fun data ->
-        self#eval_mem_event Event.memory_store addr data >>=
-        function
-        | None -> SM.return r
-        | Some ev -> self#update_event ev >>= fun () -> SM.return r
+      super#eval_store ~mem ~addr data endian size >>= fun r ->
+      self#eval_exp addr >>= fun addr ->
+      self#eval_exp data >>= fun data ->
+      self#eval_mem_event Event.memory_store addr data >>=
+      function
+      | None -> SM.return r
+      | Some ev -> self#update_event ev >>= fun () -> SM.return r
 
+    (** [resolve_addr addr] - returns a result, bound with [addr].
+        Sequence of searches is the following: 
+        1) among events that occured at current step, i.e. between two
+           code_exec events, in the same context, with the same address;
+        2) among events that occures at current step, i.e. between two
+           code_exec events, in other context, with the same address;
+        3) in current context. *)
     method private resolve_addr ~mem ~addr endian size =
-      let load () = super#eval_load ~mem ~addr endian size in
-      load () >>= fun r -> match value r with
-      | Bil.Mem _ | Bil.Imm _ -> SM.return r
-      | Bil.Bot ->
-        self#eval_exp addr >>= fun addr_res ->
-        match value addr_res with
-        | Bil.Bot | Bil.Mem _ -> load ()
-        | Bil.Imm addr' ->
-          SM.get () >>= fun ctxt ->
-          let same_addr mv = Move.cell mv = addr' in
-          match find_mem_load (other_events ctxt) same_addr with
-          | None -> load ()
-          | Some mv ->
-            let data = Bil.int (Move.data mv) in
-            super#eval_store ~mem ~addr data endian size >>= fun r ->
-            match value r with
-            | Bil.Mem _ -> super#update mem_var r >>= fun () -> load ()
-            | Bil.Imm _ | Bil.Bot -> SM.return r
+      let store_and_load mv = 
+        let data = Bil.int (Move.data mv) in
+        super#eval_store ~mem ~addr data endian size >>= fun r -> 
+        match value r with
+        | Bil.Mem _ -> super#update mem_var r >>= fun () -> 
+          super#eval_load ~mem ~addr endian size
+        | Bil.Imm _ | Bil.Bot -> SM.return r in
+      self#eval_exp addr >>= fun addr_res ->
+      match value addr_res with
+      | Bil.Bot | Bil.Mem _ -> SM.return addr_res
+      | Bil.Imm addr' ->
+        SM.get () >>= fun ctxt ->
+        match find_mem_load (self_events ctxt) (same_addr addr') with
+        | Some mv -> store_and_load mv
+        | None ->
+          match find_mem_load (other_events ctxt) (same_addr addr') with
+          | None -> super#eval_load ~mem ~addr endian size
+          | Some mv -> store_and_load mv
+
+      (* let load () = super#eval_load ~mem ~addr endian size in       *)
+      (* load () >>= fun r -> match value r with *)
+      (* | Bil.Mem _ | Bil.Imm _ -> SM.return r *)
+      (* | Bil.Bot -> *)
+      (*   self#eval_exp addr >>= fun addr_res -> *)
+      (*   match value addr_res with *)
+      (*   | Bil.Bot | Bil.Mem _ -> load () *)
+      (*   | Bil.Imm addr' -> *)
+      (*     SM.get () >>= fun ctxt -> *)
+      (*     match find_mem_load (other_events ctxt) (same_addr addr') with *)
+      (*     | None -> load () *)
+      (*     | Some mv -> *)
+      (*       let data = Bil.int (Move.data mv) in *)
+      (*       super#eval_store ~mem ~addr data endian size >>= fun r -> *)
+      (*       match value r with *)
+      (*       | Bil.Mem _ -> super#update mem_var r >>= fun () -> load () *)
+      (*       | Bil.Imm _ | Bil.Bot -> SM.return r *)
 
     method! eval_load ~mem ~addr endian size =
         self#resolve_addr mem addr endian size >>= fun r ->
@@ -187,13 +306,17 @@ class ['a] t arch dis is_interesting =
 
     method private eval_insn (mem, insn) = 
       let name = Disasm.insn_name insn in
+      (* Format.(fprintf std_formatter "%s under consideration\n" name); *)
       SM.update (fun c -> c#set_description name) >>= fun () ->
       match lift mem insn with
       | Error er ->
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
-      | Ok bil -> self#eval bil
+      | Ok bil -> 
+        SM.update (fun c -> c#set_bil bil) >>= fun () ->
+        self#eval bil
           
     method private eval_chunk chunk =
+      SM.update (fun c -> c#set_code (Chunk.data chunk)) >>= fun () ->
       match memory_of_chunk endian chunk with
       | Error er -> SM.update (fun c -> c#notify_error (`Damaged_chunk er))
       | Ok mem -> 
@@ -202,10 +325,11 @@ class ['a] t arch dis is_interesting =
         | Ok insn -> self#eval_insn insn
 
     method! eval_event ev = 
+      Format.(fprintf std_formatter "came: %a\n" Value.pp ev);
       let update () = SM.update (fun c -> c#register_event ev) in
       let is_after_code () = 
         SM.get () >>= fun c ->
-        List.exists (Set.to_list c#events) ~f:(Value.is Event.code_exec) |>
+        List.exists (self_events c) ~f:(Value.is Event.code_exec) |>
         SM.return in
       if Value.is Event.code_exec ev then 
         self#verify_frame >>= fun () -> update ()
@@ -231,9 +355,9 @@ class ['a] t arch dis is_interesting =
              super#eval_event ev >>= fun () ->
              self#update_event ev) evs
 
-    method private verify_frame : 'a u = 
+    method private verify_frame : 'a u =      
       SM.get () >>= fun ctxt -> 
-      match self#make_point (Set.to_list ctxt#events) with
+      match self#make_point (self_events ctxt) with
       | Some (code,side) -> 
         SM.update (fun c -> c#split)  >>= fun () ->
         self#eval_events side      >>= fun () ->

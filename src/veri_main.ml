@@ -35,13 +35,14 @@ let eval file f =
 let policy = 
   let open Veri_policy in 
   let rules = [ 
-    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"CF => *" Rule.skip;
-    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"NF => *" Rule.skip;
-    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"VF => *" Rule.skip;
-    Rule.create ~insn:" *" ~left:".FLAGS => *" ~right:"ZF => *" Rule.skip;
+    Rule.create ~insn:" *" ~left:".FLAGS => (.*)" ~right:"(.)F => (.*)" Rule.skip;
+
     Rule.create ~insn:" *" ~left:".FLAGS => *" Rule.skip;
-    Rule.create ~insn:" *" ~right:"v.* => *" Rule.skip;
-    Rule.create ~insn:" *" ~right:"v.* <= *" Rule.skip;
+
+    (* Rule.create ~insn:" *" ~left:"(.*\) => 0x0:*" Rule.skip; (\** test *\) *)
+    (* Rule.create ~insn:" *" ~left:"ESP => .*" Rule.skip; (\** test *\) *)
+    (* Rule.create ~insn:" *" ~right:".F <= *" Rule.skip; (\** test *\) *)
+
     Rule.create ~insn:" *" ~left:" *" Rule.deny;
     Rule.create ~insn:" *" ~right:" *" Rule.deny;
   ] in
@@ -54,7 +55,7 @@ let run file =
           let dis = Dis.store_asm dis |> Dis.store_kinds in          
           let report = Veri_report.create () in
           let ctxt = new Veri.context policy report trace in
-          let veri = new Veri.t arch dis (fun _ -> true) in
+          let veri = new Veri.t arch dis (fun e -> not (Value.is Event.pc_update e)) in
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
           Ok ctxt'#report) in
