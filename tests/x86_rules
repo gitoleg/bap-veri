@@ -1,0 +1,35 @@
+//grammar: ACTION % INSN % LEFT % RIGHT.
+//ACTION is mandatory field and could be either SKIP either DENY.
+//we are ignoring flags 
+SKIP | (.*) | .FLAGS => (.*) |
+SKIP | (.*) | AF (.*) |
+SKIP | (.*) | CF (.*) |
+SKIP | (.*) | NF (.*) | 
+SKIP | (.*) | OF (.*) | 
+SKIP | (.*) | PF (.*) |
+SKIP | (.*) | SF (.*) |
+SKIP | (.*) | VF (.*) |
+SKIP | (.*) | ZF (.*) |
+SKIP | (.*) |  | AF (.*)
+SKIP | (.*) |  | CF (.*)
+SKIP | (.*) |  | NF (.*)
+SKIP | (.*) |  | OF (.*)
+SKIP | (.*) |  | PF (.*)
+SKIP | (.*) |  | SF (.*)
+SKIP | (.*) |  | VF (.*)
+SKIP | (.*) |  | ZF (.*)
+
+//we are ignoring read from destination register in MOVrr instructions
+SKIP | MOV(.*)rr | (.*) => (.*) |
+
+//we are ignoring read from stack pointer in (MOVrm | MOVmr) instructions
+SKIP | MOV(.*)mr | .SP => (.*)  |
+SKIP | MOV(.*)rm | .SP => (.*)  |
+
+//we are ignoring reads and writes that differ only in bitwidth
+SKIP | (.*) | (.*):32 => (.*):32 | (\1):32 => (\2):(.*) 
+SKIP | (.*) | (.*):32 <= (.*):32 | (\1):32 <= (\2):(.*) 
+
+//last rules means that every event should has a pair
+DENY | (.*) | (.*) | 
+DENY | (.*) |  | (.*)

@@ -214,25 +214,6 @@ let remove_matched events events' = function
     let evs, evs' = List.unzip pairs in
     remove evs events, remove evs' events'
 
-
-let pp_ev fmt ev = Format.fprintf fmt "%a; " Value.pp ev
-
-let print_events pref evs = 
-  Format.(fprintf std_formatter "%s: " pref);
-  List.iter evs ~f:(pp_ev Format.std_formatter);
-  Format.print_newline ()
-
-let pp_match (rule, ms) = 
-  Format.fprintf Format.std_formatter "%a\n" Rule.pp rule;
-  match ms with
-  | Left evs -> print_events "left" evs
-  | Right evs -> print_events "right" evs
-  | Both pairs ->
-    List.iter ~f:(fun (ev, ev') ->
-        Format.fprintf Format.std_formatter "%a, %a;  "
-          Value.pp ev Value.pp ev') pairs;
-    Format.print_newline ()
-
 let denied entries insn events events' =   
   let entries = List.rev entries in
   let rec loop acc entries (evs,evs') = match entries with
@@ -242,9 +223,7 @@ let denied entries insn events events' =
       | None -> loop acc es (evs,evs')
       | Some matched -> 
         let acc' = match Rule.action e.rule with
-          | Rule.Skip -> 
-            (* pp_match (e.rule,matched); *)
-            acc
+          | Rule.Skip ->  acc
           | Rule.Deny -> (e.rule, matched) :: acc in
         remove_matched evs evs' matched |> 
         loop acc' es in
