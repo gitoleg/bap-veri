@@ -5,35 +5,26 @@ open Regular.Std
 open Veri_policy
 
 module Names = String.Map
-module Rules = Rule.Map
 
-type frame = matched list Rules.t [@@deriving bin_io, sexp]
+type call = (rule * matched) list  [@@deriving bin_io, sexp]
+type bind = string * call list  [@@deriving bin_io, sexp]
 
 type t = {
-  frames : frame Names.t;
+  calls  : (call list) Names.t;
   errors : Veri_error.t list;
 } [@@deriving bin_io, sexp]
 
-let create () = { frames = Names.empty; errors = []; }
+let create () = { calls = Names.empty; errors = []; }
 
-let make_frame rule matched = Map.add Rules.empty rule [matched]
+let update t name cl =
+  {t with 
+   calls =
+     Map.change t.calls name
+       (function 
+         | None -> Some [cl]
+         | Some cls -> Some (cl :: cls)) }
 
-let update_frame: frame -> rule -> matched -> frame = fun frame rule matched ->
-  Map.change frame rule
-    (function 
-      | None -> Some [matched]
-      | Some ms -> Some (matched :: ms)) 
-
-let update t name rule matched =
-  let frames = 
-    Map.change t.frames name
-      (function 
-        | None -> Some (make_frame rule matched)
-        | Some frame -> 
-          Some (update_frame frame rule matched)) in
-  {t with frames}
-
-let frames {frames} = Map.to_alist frames
+let binds {calls} : bind list = Map.to_alist calls
 let errors t = t.errors
 let notify t er = {t with errors = er :: t.errors }
 let errors_count t ~f = List.count t.errors ~f
@@ -80,22 +71,20 @@ include Regular.Make(struct
         Format.fprintf fmt "both: ";
         List.iter pairs
           ~f:(fun (e, e') -> Format.fprintf fmt "%a, %a; " Value.pp e Value.pp e')
+          
+    let pp_call fmt call = 
+      List.iter call ~f:(fun (rule, matched) ->
+          Format.fprintf fmt "%a\n%a\n" Rule.pp rule pp_matched matched)
 
-    let pp_frame fmt frame = 
-      let items = Map.to_alist frame in 
-      List.iter items ~f:(fun (rule, matches) ->
-          Format.fprintf fmt "%a\n" Rule.pp rule;
-          List.iter matches ~f:(pp_matched fmt);
-          Format.print_newline ())
+    let pp_calls fmt (calls : call list) = List.iter calls ~f:(pp_call fmt)
      
-    let pp_frames fmt frames = 
-      let items = Map.to_alist frames in
-      List.iter items ~f:(fun (insn, frame) ->
-          Format.fprintf fmt "%s:\n%a" insn pp_frame frame);
+    let pp_binds fmt (binds : bind list) = 
+      List.iter binds ~f:(fun (insn, calls) ->
+          Format.fprintf fmt "%s:\n%a" insn pp_calls calls);
       Format.print_newline ()
 
     let pp fmt t = 
-      pp_frames fmt t.frames;
+      pp_binds fmt (binds t);
       Format.fprintf fmt "errors statistic: \
                           overloaded chunks: %d; damaged chunks: %d; \
                           disasm errors: %d; lifter errors: %d\n"

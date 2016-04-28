@@ -37,7 +37,7 @@ Executable run_tests
   MainIs:         run_tests.ml
   Install:        false
   Build$:         flag(tests)
-  BuildDepends:   bap, bap-traces, bap.plugins, oUnit, findlib.dynload, pcre
+  BuildDepends:   bap, bap-traces, bap.plugins, veri_test, oUnit, findlib.dynload
   CompiledObject: best
 
 Test veri_test

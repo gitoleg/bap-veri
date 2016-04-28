@@ -71,11 +71,12 @@ let eval_trace trace =
         Monad.State.exec (veri#eval_trace trace) ctxt in
       Ok ctxt'#report)
 
-let first_left_match frames = 
+let first_left_match binds = 
   let open Option in
-  List.hd frames >>= fun (_, frame) ->
-  List.hd (Map.to_alist frame) >>= fun (rule, ms) ->
-  List.hd ms >>= function
+  List.hd binds >>= fun (_, calls) ->
+  List.hd calls >>= fun call ->
+  List.hd call >>= fun (_, matched) ->
+  match matched with
   | Veri_policy.Left left -> Some left
   | _ -> None
 
@@ -84,7 +85,7 @@ let check_left_diff pref trace expected =
   | Error er -> 
     assert_false (Printf.sprintf "%s: %s" pref (Error.to_string_hum er))
   | Ok report ->
-    match first_left_match (Veri_report.frames report) with 
+    match first_left_match (Veri_report.binds report) with 
     | None ->
       assert_false (Printf.sprintf "%s: no left match" pref)
     | Some left ->
