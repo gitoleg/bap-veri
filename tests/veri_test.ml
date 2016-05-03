@@ -75,10 +75,7 @@ let first_left_match binds =
   let open Option in
   List.hd binds >>= fun (_, calls) ->
   List.hd calls >>= fun call ->
-  List.hd call >>= fun (_, matched) ->
-  match matched with
-  | Veri_policy.Left left -> Some left
-  | _ -> None
+  List.hd call >>= fun (_, (left, _)) -> Some left
 
 let check_left_diff pref trace expected =
   match eval_trace trace with 
@@ -154,7 +151,7 @@ let test_backref_match ctxt =
   match match_events rule "insn name" events events' with
   | None -> assert_false "test back reference match empty"
   | Some matched -> 
-    let expected = Both [e0, e0'; ] in
+    let expected = [e0], [e0'] in
     assert_equal ~ctxt matched expected
 
 let suite () =

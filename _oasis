@@ -41,6 +41,5 @@ Executable run_tests
   CompiledObject: best
 
 Test veri_test
-  TestTools:      run_tests
-  Run$:           flag(tests) 
+  TestTools:      run_tests Run$: flag(tests) 
   Command:        $run_tests -runner sequential

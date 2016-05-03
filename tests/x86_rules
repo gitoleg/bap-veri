@@ -1,23 +1,12 @@
-//grammar: ACTION % INSN % LEFT % RIGHT.
+//grammar: ACTION | INSN | LEFT | RIGHT
 //ACTION is mandatory field and could be either SKIP either DENY.
+
 //we are ignoring flags 
-SKIP | (.*) | .FLAGS => (.*) |
-SKIP | (.*) | AF (.*) |
-SKIP | (.*) | CF (.*) |
-SKIP | (.*) | NF (.*) | 
-SKIP | (.*) | OF (.*) | 
-SKIP | (.*) | PF (.*) |
-SKIP | (.*) | SF (.*) |
-SKIP | (.*) | VF (.*) |
-SKIP | (.*) | ZF (.*) |
+SKIP | (.*) | EFLAGS => (.*) |
 SKIP | (.*) |  | AF (.*)
-SKIP | (.*) |  | CF (.*)
-SKIP | (.*) |  | NF (.*)
-SKIP | (.*) |  | OF (.*)
 SKIP | (.*) |  | PF (.*)
-SKIP | (.*) |  | SF (.*)
 SKIP | (.*) |  | VF (.*)
-SKIP | (.*) |  | ZF (.*)
+SKIP | (.*) |  | DF (.*)
 
 //we are ignoring read from destination register in MOVrr instructions
 SKIP | MOV(.*)rr | (.*) => (.*) |

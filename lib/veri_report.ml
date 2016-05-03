@@ -59,18 +59,16 @@ include Regular.Make(struct
     let pp_ev fmt ev = 
       Format.fprintf fmt "%a; " Value.pp ev
 
-    let pp_events fmt pref evs = 
-      Format.fprintf fmt "%s: " pref;
-      List.iter ~f:(pp_ev fmt) evs;
-      Format.print_newline ()
+    let pp_events fmt pref = function 
+      | [] -> ()
+      | evs ->
+        Format.fprintf fmt "%s: " pref;
+        List.iter ~f:(pp_ev fmt) evs;
+        Format.print_newline ()
 
-    let pp_matched fmt matched = match matched with
-      | Left evs -> pp_events fmt "left" evs
-      | Right evs -> pp_events fmt "right" evs
-      | Both pairs -> 
-        Format.fprintf fmt "both: ";
-        List.iter pairs
-          ~f:(fun (e, e') -> Format.fprintf fmt "%a, %a; " Value.pp e Value.pp e')
+    let pp_matched fmt (evs, evs') = 
+      pp_events fmt "left" evs;
+      pp_events fmt "right" evs'
           
     let pp_call fmt call = 
       List.iter call ~f:(fun (rule, matched) ->

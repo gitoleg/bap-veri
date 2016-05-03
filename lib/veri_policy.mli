@@ -21,12 +21,7 @@ module Rule : sig
   include Regular with type t := t
 end
 
-type matched =
-  | Left of event list
-  | Right of event list
-  | Both of (event * event) list
-[@@deriving bin_io, sexp]
-
+type matched = event list * event list [@@deriving bin_io, sexp]
 type rule = Rule.t [@@deriving bin_io, sexp]
 type t 
 

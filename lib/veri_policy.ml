@@ -47,7 +47,7 @@ module Rule = struct
         let act = match rule.action with
           | Skip -> "Skip"
           | Deny -> "Deny" in
-        Format.fprintf fmt "%s : %s : %s : %s ;" 
+        Format.fprintf fmt "%s %s %s %s ;" 
           act rule.insn rule.left rule.right
     end)
 end
@@ -56,12 +56,7 @@ type event = Trace.event [@@deriving bin_io, sexp]
 type events = Value.Set.t
 type rule = Rule.t [@@deriving bin_io, compare, sexp]
 type trial = Pcre.regexp
-
-type matched = 
-  | Left of event list
-  | Right of event list 
-  | Both of (event * event) list 
-  [@@deriving bin_io, sexp]
+type matched = event list * event list [@@deriving bin_io, sexp]
 
 type entry = {
   insn_trial : trial;
@@ -92,7 +87,7 @@ let make_entry rule = {
 let empty = []
 let add t rule : t = make_entry rule :: t
 let sat rex s = Pcre.pmatch ~rex s
-let sat_event e ev = sat e (Value.pps () ev) 
+let sat_event e ev = sat e (Value.pps () ev)
 
 let string_of_events ev ev' = 
   String.concat ~sep [Value.pps () ev; Value.pps () ev']
@@ -164,25 +159,25 @@ let single_match trial events =
 let match_right t events = 
   match single_match t.right_trial events with 
   | [] -> None
-  | ms -> Some (Right ms)  
+  | ms -> Some ([], ms)  
 
 let match_left t events = 
   match single_match t.left_trial events with 
   | [] -> None
-  | ms -> Some (Left ms)  
+  | ms -> Some (ms,[])  
 
 let match_both t left right = 
   let workers = Set.to_array left in      
   let jobs = Set.to_array right in
   let (flow,_) = FFMF.maxflow (t.both_trial, workers, jobs) G.V.Source G.V.Sink  in
-  Array.foldi workers ~init:[] 
-    ~f:(fun i acc w ->   
+  Array.foldi workers ~init:([],[])
+    ~f:(fun i (acc, acc') w ->   
         match Array.findi jobs ~f:(fun j e ->
             flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
-        | None -> acc 
-        | Some (_,e) -> (w, e) :: acc) |> function 
-  | [] -> None
-  | ms -> Some (Both ms)
+        | None -> acc, acc' 
+        | Some (_,e) -> w :: acc, e :: acc') |> function 
+  | [], [] -> None
+  | ms -> Some ms
 
 let is_empty_insn  t = Field.is_empty (Rule.insn t.rule)
 let is_empty_left  t = Field.is_empty (Rule.left t.rule)
@@ -207,12 +202,8 @@ let remove what from =
   let not_exists e = not (List.exists what ~f:(fun e' -> e = e')) in
   Set.filter ~f:not_exists from 
 
-let remove_matched events events' = function
-  | Left evs -> remove evs events, events'
-  | Right evs -> events, remove evs events'
-  | Both pairs -> 
-    let evs, evs' = List.unzip pairs in
-    remove evs events, remove evs' events'
+let remove_matched events events' (ms, ms') = 
+  remove ms events, remove ms' events'
 
 let denied entries insn events events' =   
   let entries = List.rev entries in
@@ -223,7 +214,7 @@ let denied entries insn events events' =
       | None -> loop acc es (evs,evs')
       | Some matched -> 
         let acc' = match Rule.action e.rule with
-          | Rule.Skip ->  acc
+          | Rule.Skip -> acc
           | Rule.Deny -> (e.rule, matched) :: acc in
         remove_matched evs evs' matched |> 
         loop acc' es in
