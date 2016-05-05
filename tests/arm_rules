@@ -1,7 +1,8 @@
 //grammar: ACTION & INSN & LEFT & RIGHT
 //ACTION is mandatory field and could be either SKIP either DENY.
 
-//we are ignoring flags 
+//we ignore flags - just because we want to know if qemu works
+//fine with arm in general
 SKIP & (.*) &  & QF (.*)
 SKIP & (.*) &  & GE (.*)
 SKIP & (.*) & QF (.*) &
@@ -19,6 +20,7 @@ SKIP & (.*) & SF (.*) &
 SKIP & (.*) & NF (.*) & 
 SKIP & (.*) & ZF (.*) &
 
+//we ignore read from pc
 SKIP & (.*) & PC => (.*) &
 
 //last rules means that every event should has a pair

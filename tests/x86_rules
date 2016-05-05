@@ -1,7 +1,11 @@
 //grammar: ACTION & INSN & LEFT & RIGHT
 //ACTION is mandatory field and could be either SKIP either DENY.
 
-//we are ignoring flags, because qemu doesn't provide a separate
+//we ignore any reads
+SKIP & (.*) & (.*) => (.*) &
+SKIP & (.*) & & (.*) => (.*)
+
+//we ignore flags, because qemu doesn't provide a separate
 //events for them.
 SKIP & (.*) & .FLAGS (.*) &
 SKIP & (.*) &  & AF (.*)
@@ -14,27 +18,11 @@ SKIP & (.*) &  & SF (.*)
 SKIP & (.*) &  & VF (.*)
 SKIP & (.*) &  & ZF (.*)
 
-//we are ignoring pc_update
+//we ignore pc_update
 SKIP & (.*) & 0x(.*):(32|64) &
 
-//we are ignoring read from destination register in MOVrr instructions,
-//because that there is a mistake in qemu
-//SKIP & MOV(.*)rr & (.*) => (.*) &
-
-//we are ignoring read from stack pointer in (MOVrm & MOVmr) instructions,
-//because that there is a mistake in qemu
-//SKIP & MOV(.*)mr & .SP => (.*)  &
-//SKIP & MOV(.*)rm & .SP => (.*)  &
-//SKIP & MOV(.*)mr & .BP => (.*)  &
-//SKIP & MOV(.*)rm & .BP => (.*)  &
-
-//we are ignoring one left read from CMOV?rr, because it contains if branch.
-//And bil produces only on read event, while qemu produces two.
-//SKIP & CMOV(.*)rr & (.*) => (.*) & 
-
-//we are ignoring reads and writes that differ only in bitwidth
-//SKIP & (.*) & (.*):(.*) => (.*):(.*) & (\1):(.*) => (\3):(.*)
-//SKIP & (.*) & (.*):(.*) <= (.*):(.*) & (\1):(.*) <= (\3):(.*)
+//we ignore memory reads and writes that differ only in bitwidth
+SKIP & (.*) & (.*):(.*) <= (.*):(.*) & (\1):(.*) <= (\3):(.*)
 
 //last rules means that every event should has a pair
 DENY & (.*) & (.*) & 
