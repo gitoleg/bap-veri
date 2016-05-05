@@ -1,6 +1,7 @@
 open Core_kernel.Std
 open Bap.Std
 open Bap_traces.Std
+open Bap_future.Std
 
 module SM  = Monad.State
 open SM.Monad_infix
@@ -11,6 +12,9 @@ type 'a r = 'a Bil.Result.r
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 type policy = Veri_policy.t
+type matched = Veri_policy.matched
+type rule = Veri_policy.rule
+type data = bil * string * (rule * matched) list
 
 let create_move_event tag cell' data' =  
   Value.create tag Move.({cell = cell'; data = data';})
@@ -58,6 +62,8 @@ class context policy report trace = object(self:'s)
   val other = None
   val descr : string option = None
   val error : error option = None
+  val bil : bil = []
+  val stream' = Stream.create ()
 
   method merge: 's =
     let report =
@@ -71,8 +77,10 @@ class context policy report trace = object(self:'s)
           let events' = self#events in
           match Veri_policy.denied policy name events events' with
           | [] -> report 
-          | results -> Veri_report.update report name results in
-    {<other = None; error = None; descr = None;
+          | results ->
+            Signal.send (snd stream') (bil, name, results);
+            Veri_report.update report name results in
+    {<other = None; error = None; descr = None; bil = [];
       events = Events.empty; report = report >}
 
   method replay =
@@ -87,6 +95,8 @@ class context policy report trace = object(self:'s)
   method register_event ev = {< events = Set.add events ev >}
   method notify_error er = {<error = Some er >}
   method backup someone = {<other = Some someone; events = Events.empty >}
+  method set_bil bil = {< bil = bil >}
+  method data : data stream = fst stream'
 end
 
 let target_info arch = 
@@ -234,7 +244,9 @@ class ['a] t arch dis is_interesting =
       match lift mem insn with
       | Error er ->
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
-      | Ok bil -> self#eval bil
+      | Ok bil ->
+        SM.update (fun c -> c#set_bil bil) >>= fun () ->
+        self#eval bil
           
     method private eval_chunk chunk =
       match memory_of_chunk endian chunk with

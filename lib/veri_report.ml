@@ -29,6 +29,9 @@ let errors t = t.errors
 let notify t er = {t with errors = er :: t.errors }
 let errors_count t ~f = List.count t.errors ~f
 
+let bil_errors {calls} =
+  Map.fold ~f:(fun ~key ~data cnt -> cnt + List.length data) ~init:0 calls
+
 let overloaded_count t = errors_count t 
     ~f:(function 
         | `Overloaded_chunk -> true 
@@ -84,9 +87,10 @@ include Regular.Make(struct
     let pp fmt t = 
       pp_binds fmt (binds t);
       Format.fprintf fmt "errors statistic: \
+                          bil errors : %d;
                           overloaded chunks: %d; damaged chunks: %d; \
                           disasm errors: %d; lifter errors: %d\n"
-        (overloaded_count t) (damaged_count t) (disasm_count t)
+        (bil_errors t) (overloaded_count t) (damaged_count t) (disasm_count t)
         (lifter_count t)
 
     let module_name = Some "Veri_Report"

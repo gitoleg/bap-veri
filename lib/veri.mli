@@ -1,9 +1,11 @@
 open Core_kernel.Std
 open Bap.Std
 open Bap_traces.Std
+open Bap_future.Std
 
 type error = Veri_error.t
 type policy = Veri_policy.t
+type data = bil * string * (Veri_policy.rule * Veri_policy.matched) list
 
 module Disasm : sig
   module Dis = Disasm_expert.Basic
@@ -23,6 +25,8 @@ class context: policy -> Veri_report.t -> Trace.t -> object('s)
     method set_description: string -> 's
     method notify_error: error -> 's
     method backup: 's -> 's
+    method set_bil: bil -> 's
+    method data : data stream
   end
 
 class ['a] t : arch -> Disasm.t -> (Trace.event -> bool) -> object('s)

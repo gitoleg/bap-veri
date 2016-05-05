@@ -54,6 +54,33 @@ end
 
 type event = Trace.event [@@deriving bin_io, sexp]
 type events = Value.Set.t
+
+module Matched = struct
+  type t = event list * event list [@@deriving bin_io, sexp]
+  type s = t [@@deriving bin_io, compare, sexp]
+
+  include Regular.Make(struct
+      type t = s [@@deriving bin_io, compare, sexp]
+      let compare = compare
+      let hash = Hashtbl.hash
+      let module_name = Some "Veri_policy.Matched"
+      let version = "0.1"
+      let pp_ev fmt ev = Format.fprintf fmt "%a; " Value.pp ev
+
+      let pp_events pref fmt = function
+        | [] -> ()
+        | evs ->
+          Format.fprintf fmt "%s: " pref;
+          List.iter evs ~f:(pp_ev fmt);
+          Format.print_newline ()
+
+      let pp fmt (evs, evs') =
+        Format.fprintf fmt "%a%a"
+          (pp_events "left") evs (pp_events "right") evs'
+
+    end)
+end
+
 type rule = Rule.t [@@deriving bin_io, compare, sexp]
 type trial = Pcre.regexp
 type matched = event list * event list [@@deriving bin_io, sexp]
@@ -76,16 +103,26 @@ let make_both_trial rule =
   let s = String.concat ~sep [Rule.left rule; Rule.right rule] in
   make_trial s
 
-let make_entry rule = {
+let make_entry_exn rule = {
   insn_trial = make_trial (Rule.insn rule);
   left_trial = make_trial (Rule.left rule);
   right_trial = make_trial (Rule.right rule);
   both_trial = make_both_trial rule;
   rule;
-}
+} 
 
+let make_entry_opt rule = 
+  try
+    Some (make_entry_exn rule)
+  with Pcre.Error _ -> 
+    Printf.eprintf "pcre error for %s\n" (Rule.pps () rule);
+    None
+   
 let empty = []
-let add t rule : t = make_entry rule :: t
+let add t rule : t = match make_entry_opt rule with
+  | None -> t
+  | Some e -> e :: t
+
 let sat rex s = Pcre.pmatch ~rex s
 let sat_event e ev = sat e (Value.pps () ev)
 
@@ -175,7 +212,7 @@ let match_both t left right =
         match Array.findi jobs ~f:(fun j e ->
             flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
         | None -> acc, acc' 
-        | Some (_,e) -> w :: acc, e :: acc') |> function 
+        | Some (_,e) -> w :: acc, e :: acc') |> function
   | [], [] -> None
   | ms -> Some ms
 
@@ -196,7 +233,9 @@ let match_events' t insn events events' =
     | _ -> match_both t left right
 
 let match_events rule insn events events' =
-  match_events' (make_entry rule) insn events events'
+  match make_entry_opt rule with
+  | None -> None
+  | Some e -> match_events' e insn events events'
 
 let remove what from = 
   let not_exists e = not (List.exists what ~f:(fun e' -> e = e')) in

@@ -1,0 +1,26 @@
+//grammar: ACTION | INSN | LEFT | RIGHT
+//ACTION is mandatory field and could be either SKIP either DENY.
+
+//we are ignoring flags 
+SKIP | (.*) |  | QF (.*)
+SKIP | (.*) |  | GE (.*)
+SKIP | (.*) | QF (.*) |
+SKIP | (.*) | GE (.*) |
+SKIP | (.*) |  | CF (.*)
+SKIP | (.*) |  | OF (.*)
+SKIP | (.*) |  | VF (.*)
+SKIP | (.*) |  | SF (.*)
+SKIP | (.*) |  | NF (.*)
+SKIP | (.*) |  | ZF (.*)
+SKIP | (.*) | CF (.*) |
+SKIP | (.*) | OF (.*) |
+SKIP | (.*) | VF (.*) |
+SKIP | (.*) | SF (.*) |
+SKIP | (.*) | NF (.*) | 
+SKIP | (.*) | ZF (.*) |
+
+SKIP | (.*) | PC => (.*) |
+
+//last rules means that every event should has a pair
+DENY | (.*) | (.*) | 
+DENY | (.*) |  | (.*)

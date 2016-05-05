@@ -1,8 +1,9 @@
 open Core_kernel.Std
-open Veri_policy
 open Bap.Std
 open Bap_traces.Std
 open Bap_plugins.Std
+open Bap_future.Std
+open Veri_policy
 
 module Dis = Disasm_expert.Basic
 
@@ -35,7 +36,6 @@ let rule_of_string s =
 let read_rules file = 
   let inc = In_channel.create file in
   let rules = In_channel.input_lines inc |> List.filter_map ~f:rule_of_string in
-  List.iter ~f:(fun r -> Printf.printf "%s\n" (Rule.pps () r)) rules;
   In_channel.close inc;
   rules
 
@@ -64,7 +64,24 @@ let make_policy = function
     let rules = read_rules file in
     List.fold ~f:Veri_policy.add ~init:Veri_policy.empty rules
 
-let run rules file = 
+let pp_matched fmt (rule, matched) =
+  Format.fprintf fmt "%a\n%a" Rule.pp rule Matched.pp matched
+
+let pp_bil fmt = function
+  | [] -> Format.fprintf fmt "bil is empty\n"
+  | bil -> Format.fprintf fmt "%a\n" Bil.pp bil
+
+let pp_result fmt (bil, insn, matches) = 
+  Format.fprintf fmt "%s\n" insn;
+  Format.fprintf fmt "%a\n" pp_bil bil;
+  List.iter ~f:(pp_matched fmt) matches;
+  Format.print_newline ();
+  Format.print_flush ()
+  
+let verbose_stream s = 
+  ignore(Stream.subscribe s (pp_result Format.std_formatter))
+
+let run rules file verbose = 
   let f arch trace = 
     let report = 
       Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
@@ -73,6 +90,7 @@ let run rules file =
           let policy = make_policy rules in
           let ctxt = new Veri.context policy report trace in
           let veri = new Veri.t arch dis (fun e -> not (Value.is Event.pc_update e)) in
+          if verbose then verbose_stream ctxt#data;
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
           Ok ctxt'#report) in
@@ -96,12 +114,16 @@ module Command = struct
     let doc = "Target architecture" in
     Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"RULES" ~doc)
 
+  let verbose = 
+    let doc = "Output result" in
+    Arg.(value & flag & info ["verbose"] ~doc)
+
   let info =
     let doc = "Bil verification tool" in
     let man = [] in
     Term.info "veri" ~doc ~man
 
-  let run_t = Term.(const run $ rules $ filename)
+  let run_t = Term.(const run $ rules $ filename $ verbose)
 
   let run () = match Term.eval (run_t, info) with `Error _ -> exit 1 | _ -> exit 0
 
