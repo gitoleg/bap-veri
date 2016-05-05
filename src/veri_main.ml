@@ -24,7 +24,7 @@ let action_of_string = function
 let rule_of_string s = 
   if String.strip s = "" || String.is_prefix ~prefix:"//" s then None
   else
-    let fields = String.split ~on:'|' s |> List.map ~f:String.strip in
+    let fields = String.split ~on:'&' s |> List.map ~f:String.strip in
     match fields with
     | [action; insn; left; right] ->
       let rule = Rule.create ~insn ~left ~right (action_of_string action) in
@@ -89,7 +89,7 @@ let run rules file verbose =
           let report = Veri_report.create () in
           let policy = make_policy rules in
           let ctxt = new Veri.context policy report trace in
-          let veri = new Veri.t arch dis (fun e -> not (Value.is Event.pc_update e)) in
+          let veri = new Veri.t arch dis (fun _ -> true) in
           if verbose then verbose_stream ctxt#data;
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
