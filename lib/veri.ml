@@ -55,6 +55,19 @@ end
 
 module Events = Value.Set
 
+module type S = module type of Set
+
+let print_events pref evs =
+  Format.(fprintf std_formatter "%s: " pref);
+  List.iter ~f:(fun ev -> 
+      Format.(fprintf std_formatter "%a; " Value.pp ev)) evs;
+  Format.print_newline ()
+
+let pp_bytes fmt s =
+  let pp fmt s =
+    String.iter ~f:(fun c -> Format.fprintf fmt "%X@ " (Char.to_int c)) s in
+  Format.fprintf fmt "@[<hv>%a@]" pp s
+
 class context policy report trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val report : Veri_report.t = report
@@ -64,6 +77,14 @@ class context policy report trace = object(self:'s)
   val error : error option = None
   val bil : bil = []
   val stream' = Stream.create ()
+  val code : string option = None
+
+  method private print_code = match code with
+    | None -> ()
+    | Some code -> 
+      Format.(fprintf std_formatter "code is %a\n" pp_bytes code)
+
+  method set_code str = {< code = Some str >}
 
   method merge: 's =
     let report =
@@ -78,6 +99,9 @@ class context policy report trace = object(self:'s)
           match Veri_policy.denied policy name events events' with
           | [] -> report 
           | results ->
+            self#print_code;
+            print_events "left" (Set.to_list events);
+            print_events "right" (Set.to_list events');
             Signal.send (snd stream') (bil, name, results);
             Veri_report.update report name results in
     {<other = None; error = None; descr = None; bil = [];
@@ -93,6 +117,12 @@ class context policy report trace = object(self:'s)
   method report = report
   method set_description s = {<descr = Some s >}
   method register_event ev = {< events = Set.add events ev >}
+
+  method discard_event: (event -> bool) -> 's = fun f ->
+    match Set.find events ~f with
+    | None -> self
+    | Some ev -> {< events = Set.remove events ev >}
+    
   method notify_error er = {<error = Some er >}
   method backup someone = {<other = Some someone; events = Events.empty >}
   method set_bil bil = {< bil = bil >}
@@ -111,8 +141,14 @@ let other_events c = match c#other with
   | None -> []
   | Some c -> Set.to_list c#events
 
-let self_events c = Set.to_list c#events
+let is_previous_mv tag test ev =
+  match Value.get tag ev with
+  | None -> false
+  | Some mv -> Move.cell mv = test
 
+let is_previous_write = is_previous_mv Event.register_write 
+let is_previous_load  = is_previous_mv Event.memory_load 
+let self_events c = Set.to_list c#events
 let same_var  var  mv = var  = Move.cell mv
 let same_addr addr mv = addr = Move.cell mv
 
@@ -144,6 +180,12 @@ class ['a] t arch dis is_interesting =
           | Some mv -> self#eval_exp (Bil.int (Move.data mv))
           | None -> super#lookup var
 
+    method private try_emit_read var data : 'a u = 
+      SM.get () >>= fun ctxt ->
+      match find_reg_read (self_events ctxt) (same_var var) with
+      | None -> self#update_event (create_reg_read var data)
+      | Some _ -> SM.return ()
+
     (** [lookup var] - returns a result, bound with variable.
         Search starts from self events, if it was write access to given 
         variable at current step. And if it was, then no read events emitted
@@ -153,7 +195,9 @@ class ['a] t arch dis is_interesting =
     method! lookup var : 'a r =
       SM.get () >>= fun ctxt ->
       match find_reg_write (self_events ctxt) (same_var var) with
-      | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+      | Some mv -> 
+        self#try_emit_read var (Move.data mv) >>= fun () ->
+        self#eval_exp (Bil.int (Move.data mv))
       | None ->
         self#resolve_var var >>= fun r ->
         match value r with
@@ -169,6 +213,7 @@ class ['a] t arch dis is_interesting =
       match value result with
       | Bil.Imm data -> 
         if not (Var.is_virtual var) then
+          SM.update (fun c -> c#discard_event (is_previous_write var)) >>= fun () ->
           self#update_event (create_reg_write var data)
         else SM.return ()
       | Bil.Mem _ | Bil.Bot -> SM.return ()
@@ -249,12 +294,20 @@ class ['a] t arch dis is_interesting =
         self#eval bil
           
     method private eval_chunk chunk =
+      SM.update (fun c -> c#set_code (Chunk.data chunk)) >>= fun () -> 
       match memory_of_chunk endian chunk with
       | Error er -> SM.update (fun c -> c#notify_error (`Damaged_chunk er))
       | Ok mem -> 
         match Disasm.insn dis mem with
         | Error er -> SM.update (fun c -> c#notify_error er)
         | Ok insn -> self#eval_insn insn
+
+    method private print_event ev = 
+      let s = Value.pps () ev in
+      if Value.is Event.code_exec ev then 
+        Format.(fprintf std_formatter "\n%s\n" s)
+      else
+        Format.(fprintf std_formatter "%s\n" s)
 
     method! eval_event ev = 
       let is_after_code () = 

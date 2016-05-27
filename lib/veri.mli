@@ -18,6 +18,7 @@ class context: policy -> Veri_report.t -> Trace.t -> object('s)
     method split : 's
     method merge : 's
     method register_event : Trace.event -> 's
+    method discard_event : (Trace.event -> bool) -> 's
     method events : Value.Set.t
     method other  : 's option
     method replay : 's 
@@ -26,6 +27,7 @@ class context: policy -> Veri_report.t -> Trace.t -> object('s)
     method notify_error: error -> 's
     method backup: 's -> 's
     method set_bil: bil -> 's
+    method set_code : string -> 's 
     method data : data stream
   end
 

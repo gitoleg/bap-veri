@@ -81,6 +81,8 @@ let pp_result fmt (bil, insn, matches) =
 let verbose_stream s = 
   ignore(Stream.subscribe s (pp_result Format.std_formatter))
 
+let ignore_pc_update ev = not (Value.is Event.pc_update ev)
+
 let run rules file verbose = 
   let f arch trace = 
     let report = 
@@ -89,7 +91,8 @@ let run rules file verbose =
           let report = Veri_report.create () in
           let policy = make_policy rules in
           let ctxt = new Veri.context policy report trace in
-          let veri = new Veri.t arch dis (fun _ -> true) in
+          (* let veri = new Veri.t arch dis (fun _ -> true) in *)
+          let veri = new Veri.t arch dis ignore_pc_update in
           if verbose then verbose_stream ctxt#data;
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
@@ -107,20 +110,24 @@ module Command = struct
   open Cmdliner
 
   let filename = 
-    let doc = "Input filename" in 
+    let doc = "Input file with extension .frames" in 
     Arg.(required & pos 0 (some non_dir_file) None & info [] ~doc ~docv:"FILE") 
       
   let rules =
-    let doc = "Target architecture" in
-    Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"RULES" ~doc)
+    let doc = "File with policy description" in
+    Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
 
   let verbose = 
-    let doc = "Output result" in
+    let doc = "Print verbose output" in
     Arg.(value & flag & info ["verbose"] ~doc)
 
   let info =
     let doc = "Bil verification tool" in
-    let man = [] in
+    let man = [
+      `S "DESCRIPTION";
+      `P "Veri is a BIL verification tool and intend to verify BAP lifters
+          and to find errors.";
+    ] in
     Term.info "veri" ~doc ~man
 
   let run_t = Term.(const run $ rules $ filename $ verbose)

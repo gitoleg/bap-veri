@@ -1,29 +1,50 @@
 //grammar: ACTION & INSN & LEFT & RIGHT
 //ACTION is mandatory field and could be either SKIP either DENY.
 
-//we ignore any reads
-SKIP & (.*) & (.*) => (.*) &
-SKIP & (.*) & & (.*) => (.*)
+//we completle ignore because bil is foolish
+SKIP & NOOP. & & 
+SKIP & RDTSC & &
+SKIP & SYSCALL.* & &
+SKIP & CPUID & &
+SKIP & XGETBV & &
 
-//we ignore flags, because qemu doesn't provide a separate
-//events for them.
-SKIP & (.*) & .FLAGS (.*) &
-SKIP & (.*) &  & AF (.*)
-SKIP & (.*) &  & CF (.*)
-SKIP & (.*) &  & DF (.*)
-SKIP & (.*) &  & OF (.*)
-SKIP & (.*) &  & PF (.*)
-SKIP & (.*) &  & NF (.*)
-SKIP & (.*) &  & SF (.*)
-SKIP & (.*) &  & VF (.*)
-SKIP & (.*) &  & ZF (.*)
+//we completly ignore this insns because bil 
+//and tracer a too different. From one hand tracer writes
+//undefined flags, from other hand lifter produce different
+//results with tracer even defined flag in use
+SKIP & S(AR|HL|HR).* & &
 
-//we ignore pc_update
-SKIP & (.*) & 0x(.*):(32|64) &
+//insn that we suspect broken because of our extra read
+SKIP & IMUL.* & & .* => .*
+SKIP & MOV8rm & & .* => .*
+SKIP & CMPXCHG.*rm & & .* => .*
+SKIP & SET.* & & .* => .*
+SKIP & MOV(.*)toPQI.* & & .* => .*
+SKIP & MOV(D|H|L|P).*  & & .* => .*
 
-//we ignore memory writes that differ only in bitwidth
-SKIP & (.*) & (.*):(.*) <= (.*):(.*) & (\1):(.*) <= (\3):(.*)
+//insn that we suspect broken because of our extra read attempt
+//and because of absence of such variable in real events
+SKIP & MOV(D|H|L|P).* & .* <= .* &
 
+// 1) condition move reads anyway every operand in tracer
+// 2) condition move reads anyway else branch even if condition 
+//    expression is true in lifter
+// 3) condition move writes anyway the same value in destinition
+//    if condition expression is false, althoug it should be left
+//    unmodified
+SKIP & CMOV.* & .* => .* &
+SKIP & CMOV.* & & .* => .* 
+SKIP & CMOV.* & & .* <= .* 
+
+//XOR is suspected to be broken, because in case of same operands,
+//e.g. RAX and RAX, it reads nothing, just write zero to destination
+SKIP & XOR.* & &
+
+//we ignore flags that could be undefined - there is a different values in 
+//tracer and in lifter
+SKIP & ROL.* & OF <= .* &
+SKIP & ROR.* & OF <= .* &
+      
 //last rules means that every event should has a pair
-DENY & (.*) & (.*) & 
-DENY & (.*) &  & (.*)
+DENY & .* & .* & 
+DENY & .* &  & .*

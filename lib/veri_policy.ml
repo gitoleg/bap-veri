@@ -228,6 +228,7 @@ let match_events' t insn events events' =
     let left = Set.diff events events' in
     let right = Set.diff events' events in
     match is_empty_left t, is_empty_right t with
+    | true, true -> Some (Set.to_list events, Set.to_list events')
     | true, _ -> match_right t right
     | _, true -> match_left t left
     | _ -> match_both t left right
