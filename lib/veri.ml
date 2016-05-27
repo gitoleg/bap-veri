@@ -151,6 +151,7 @@ let is_previous_load  = is_previous_mv Event.memory_load
 let self_events c = Set.to_list c#events
 let same_var  var  mv = var  = Move.cell mv
 let same_addr addr mv = addr = Move.cell mv
+let is_never_read events var = find_reg_read events (same_var var) = None
 
 class ['a] t arch dis is_interesting =
   let endian = Arch.endian arch in
@@ -182,9 +183,9 @@ class ['a] t arch dis is_interesting =
 
     method private try_emit_read var data : 'a u = 
       SM.get () >>= fun ctxt ->
-      match find_reg_read (self_events ctxt) (same_var var) with
-      | None -> self#update_event (create_reg_read var data)
-      | Some _ -> SM.return ()
+      if is_never_read (self_events ctxt) var then 
+        self#update_event (create_reg_read var data)
+      else SM.return ()
 
     (** [lookup var] - returns a result, bound with variable.
         Search starts from self events, if it was write access to given 
