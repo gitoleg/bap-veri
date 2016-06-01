@@ -26,9 +26,9 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     method split : 's
     method merge : 's
     method other  : 's option
-    method events : Value.Set.t
     method stat : Veri_stat.t
     method code : Chunk.t option
+    method events : Value.Set.t
     method reports : Report.t stream
     method register_event : Trace.event -> 's
     method discard_event : (Trace.event -> bool) -> 's
