@@ -25,18 +25,17 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     inherit Veri_traci.context
     method split : 's
     method merge : 's
-    method replay : 's
-    method backup : 's -> 's
     method other  : 's option
     method events : Value.Set.t
-    method stat: Veri_stat.t
+    method stat : Veri_stat.t
+    method code : Chunk.t option
     method reports : Report.t stream
     method register_event : Trace.event -> 's
     method discard_event : (Trace.event -> bool) -> 's
     method notify_error: Veri_error.t -> 's
     method set_description: string -> 's
     method set_bil : bil -> 's
-    method set_code : string -> 's 
+    method set_code : Chunk.t -> 's 
   end
 
 class ['a] t : arch -> Disasm.t -> (Trace.event -> bool) -> object('s)

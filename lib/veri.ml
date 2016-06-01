@@ -4,15 +4,14 @@ open Regular.Std
 open Bap_traces.Std
 open Bap_future.Std
 
-module SM  = Monad.State
+module SM = Monad.State
 open SM.Monad_infix
 
+type event = Trace.event [@@deriving bin_io, compare, sexp]
 type 'a u = 'a Bil.Result.u
 type 'a r = 'a Bil.Result.r
-type event = Trace.event [@@deriving bin_io, compare, sexp]
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
-type policy = Veri_policy.t
 type matched = Veri_policy.matched [@@deriving bin_io, compare, sexp]
 type rule = Veri_policy.rule [@@deriving bin_io, compare, sexp]
 
@@ -29,9 +28,9 @@ let create_mem_store = create_move_event Event.memory_store
 let create_mem_load  = create_move_event Event.memory_load
 let create_reg_read  = create_move_event Event.register_read
 let create_reg_write = create_move_event Event.register_write
-let find_reg_read = find Event.register_read
+let find_reg_read  = find Event.register_read
 let find_reg_write = find Event.register_write
-let find_mem_load = find Event.memory_load
+let find_mem_load  = find Event.memory_load
 let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
@@ -62,7 +61,7 @@ module Report = struct
     data : (rule * matched) list;
     code : string;
   } [@@deriving bin_io, compare, fields, sexp]
-  
+
   type s = t  [@@deriving bin_io, compare, sexp]
 
   include Regular.Make(struct 
@@ -75,22 +74,22 @@ module Report = struct
 
       let pp_code fmt s =
         let pp fmt s =
-          String.iter ~f:(fun c -> Format.fprintf fmt "%X@ " (Char.to_int c)) s in
-        Format.fprintf fmt "@[<hv>%a@]" pp s
+          String.iter ~f:(fun c -> Format.fprintf fmt "%X " (Char.to_int c)) s in
+        Format.fprintf fmt "@[<h>%a@]" pp s
 
       let pp_evs fmt evs =
         List.iter ~f:(fun ev -> 
             Format.(fprintf std_formatter "%a; " Value.pp ev)) evs
 
-      let pp_matched fmt (rule, matched) =
+      let pp_data fmt (rule, matched) =
         let open Veri_policy in
         Format.fprintf fmt "%a\n%a" Rule.pp rule Matched.pp matched
 
-     let pp fmt t =
-       Format.fprintf fmt "@[<v0>%s %a@,left: %a@,right: %a@,%a@]@."
-         t.insn pp_code t.code pp_evs t.left pp_evs t.right Bil.pp t.bil;
-       List.iter ~f:(pp_matched fmt) t.data;
-       Format.print_newline ()
+      let pp fmt t =
+        Format.fprintf fmt "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."
+          t.insn pp_code t.code pp_evs t.left pp_evs t.right Bil.pp t.bil;
+        List.iter ~f:(pp_data fmt) t.data;
+        Format.print_newline ()
 
     end)
 end
@@ -101,18 +100,22 @@ class context policy trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val events = Events.empty
   val other  = None
+  val stream = Stream.create ()
   val descr : string option = None
   val error : error option = None
   val bil   : bil = []
-  val stream = Stream.create ()
-  val code  : string option = None
+  val code  : Chunk.t option = None
   val stat  : Veri_stat.t = Veri_stat.create ()
-     
-  method set_code str = {< code = Some str >}
 
-  method private make_report ~insn ~left ~right data =
-    Report.Fields.create ~bil ~insn ~left ~right ~data
-      ~code:(Option.value_exn code)
+  method set_code c = {< code = Some c >}
+  method code = code
+
+  method private make_report data =
+    Report.Fields.create ~bil ~data
+      ~right:(self#events |> Set.to_list)
+      ~left:(Option.(value_exn self#other)#events |> Set.to_list)
+      ~insn:(Option.value_exn descr)
+      ~code:(Option.value_exn code |> Chunk.data)
 
   method merge: 's =
     let stat =
@@ -123,36 +126,29 @@ class context policy trace = object(self:'s)
         | None -> stat
         | Some name ->
           let events = Option.(value_exn self#other)#events in
-          let events' = self#events in
+          let events' = self#events in         
           match Veri_policy.denied policy name events events' with
           | [] -> Veri_stat.success stat name
           | results ->
-            let report = self#make_report ~insn:name ~left:(Set.to_list events)
-                ~right:(Set.to_list events') results in
+            let report = self#make_report results in
             Signal.send (snd stream) report;
             Veri_stat.failbil stat name  in
     {<other = None; error = None; descr = None; bil = [];
-      events = Events.empty; stat = stat >}
+      events = Events.empty; stat = stat; code = None >}
 
-  method stat = stat
-
-  method replay =
-    let new_i = Option.value_exn other in
-    new_i#backup self
-
+  method stat = stat  
   method events: Events.t = events
-  method split = self#backup self
+  method split = {<other = Some self; events = Events.empty; >}
   method other = other
   method set_description s = {<descr = Some s >}
-  method register_event ev = {< events = Set.add events ev >}
+  method register_event ev = {< events = Set.add events ev; >}
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
     | None -> self
     | Some ev -> {< events = Set.remove events ev >}
-    
+
   method notify_error er = {<error = Some er >}
-  method backup someone = {<other = Some someone; events = Events.empty >}
   method set_bil bil = {< bil = bil >}
   method reports : Report.t stream = fst stream
 end
@@ -192,7 +188,7 @@ class ['a] t arch dis is_interesting =
     method private update_event ev =
       if is_interesting ev then SM.update (fun c -> c#register_event ev)
       else SM.return () 
-          
+
     (** [resolve_var var] - returns a result, bound with [var].
         Sequence of searches is the following:
         1) among read events that occured at current step in the same context,
@@ -201,20 +197,20 @@ class ['a] t arch dis is_interesting =
            with the same variable;
         3) in current context, for the same variable *)
     method private resolve_var : var -> 'a r = fun var ->
-        SM.get () >>= fun ctxt ->
-        match find_reg_read (self_events ctxt) (same_var var) with
+      SM.get () >>= fun ctxt ->
+      match find_reg_read (self_events ctxt) (same_var var) with
+      | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+      | None -> 
+        match find_reg_read (other_events ctxt) (same_var var) with
         | Some mv -> self#eval_exp (Bil.int (Move.data mv))
-        | None -> 
-          match find_reg_read (other_events ctxt) (same_var var) with
-          | Some mv -> self#eval_exp (Bil.int (Move.data mv))
-          | None -> super#lookup var
+        | None -> super#lookup var
 
     method private try_emit_read var data : 'a u = 
       SM.get () >>= fun ctxt ->
       if is_never_read (self_events ctxt) var then
         self#update_event (create_reg_read var data)
       else SM.return ()
-          
+
     (** [lookup var] - returns a result, bound with variable.
         Search starts from self events, if it was write access to given 
         variable at current step. And if it was, then result of write 
@@ -294,7 +290,7 @@ class ['a] t arch dis is_interesting =
 
     (** [eval_load ~mem ~addr endian size] - returns a result bound with [addr].
         Search starts from self events, if it was write access to given
-        address at current step. And if it was, thenresult of write access 
+        address at current step. And if it was, then result of write access 
         returned. And load event emitted only if previous load event with
         same address is absent.
         Otherwise searching continues as written above for [resolve_addr], 
@@ -313,7 +309,7 @@ class ['a] t arch dis is_interesting =
           match ev with
           | Some ev -> self#update_event ev >>= fun () -> SM.return r
           | None -> SM.return r
-                  
+
     method private eval_insn (mem, insn) = 
       let name = Disasm.insn_name insn in
       SM.update (fun c -> c#set_description name) >>= fun () ->
@@ -323,9 +319,9 @@ class ['a] t arch dis is_interesting =
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
         self#eval bil
-          
+
     method private eval_chunk chunk =
-      SM.update (fun c -> c#set_code (Chunk.data chunk)) >>= fun () -> 
+      SM.update (fun c -> c#set_code chunk) >>= fun () -> 
       match memory_of_chunk endian chunk with
       | Error er -> SM.update (fun c -> c#notify_error (`Damaged_chunk er))
       | Ok mem -> 
@@ -335,27 +331,16 @@ class ['a] t arch dis is_interesting =
 
     method! eval_event ev = 
       let is_after_code () = 
-        SM.get () >>= fun c ->
-        List.exists (self_events c) ~f:(Value.is Event.code_exec) |>
-        SM.return in
-      if Value.is Event.code_exec ev then 
+        SM.get () >>= fun c -> 
+        c#code <> None |> SM.return in
+      match Value.get Event.code_exec ev with
+      | Some code -> 
         self#verify_frame >>= fun () -> 
-        SM.update (fun c -> c#register_event ev)
-      else 
+        SM.update (fun c -> c#set_code code)
+      | None ->
         is_after_code () >>= fun r ->
         if r then self#update_event ev
         else SM.return ()
-
-    method private make_point evs = 
-      let code, side = 
-        List.fold_left ~init:(None, []) 
-          ~f:(fun (code, evs) ev -> 
-              match Value.get Event.code_exec ev with
-              | None -> code, ev::evs
-              | Some chunk as r -> r, evs) evs in
-      match code with 
-      | None -> None
-      | Some code -> Some (code, side)
 
     method private eval_events evs = 
       List.fold ~init:(SM.return ())
@@ -363,13 +348,12 @@ class ['a] t arch dis is_interesting =
              super#eval_event ev >>= fun () ->
              self#update_event ev) evs
 
-    method private verify_frame : 'a u =      
+    method private verify_frame : 'a u =
       SM.get () >>= fun ctxt -> 
-      match self#make_point (self_events ctxt) with
-      | Some (code,side) -> 
-        SM.update (fun c -> c#split)  >>= fun () ->
-        self#eval_events side      >>= fun () ->
-        SM.update (fun c -> c#replay) >>= fun () ->
+      let code, side = ctxt#code, Set.to_list ctxt#events in
+      match code with
+      | Some code -> 
+        SM.update (fun c -> c#split) >>= fun () ->
         self#eval_chunk code       >>= fun () ->
         SM.update (fun c -> c#merge)
       | None -> SM.return ()
