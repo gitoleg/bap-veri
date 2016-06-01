@@ -52,7 +52,7 @@ module Rule = struct
     end)
 end
 
-type event = Trace.event [@@deriving bin_io, sexp]
+type event = Trace.event [@@deriving bin_io, compare, sexp]
 type events = Value.Set.t
 
 module Matched = struct
@@ -83,7 +83,7 @@ end
 
 type rule = Rule.t [@@deriving bin_io, compare, sexp]
 type trial = Pcre.regexp
-type matched = event list * event list [@@deriving bin_io, sexp]
+type matched = event list * event list [@@deriving bin_io, compare, sexp]
 
 type entry = {
   insn_trial : trial;

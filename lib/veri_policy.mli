@@ -22,12 +22,12 @@ module Rule : sig
 end
 
 module Matched : sig
-  type t = event list * event list [@@deriving bin_io, sexp]
+  type t = event list * event list [@@deriving bin_io, compare, sexp]
   include Regular with type t := t
 end
 
-type matched = Matched.t [@@deriving bin_io, sexp]
-type rule = Rule.t [@@deriving bin_io, sexp]
+type matched = Matched.t [@@deriving bin_io, compare, sexp]
+type rule = Rule.t [@@deriving bin_io, compare, sexp]
 type t 
 
 val empty : t

@@ -64,18 +64,8 @@ let make_policy = function
     let rules = read_rules file in
     List.fold ~f:Veri_policy.add ~init:Veri_policy.empty rules
 
-let pp_matched fmt (rule, matched) =
-  Format.fprintf fmt "%a\n%a" Rule.pp rule Matched.pp matched
-
-let pp_bil fmt = function
-  | [] -> Format.fprintf fmt "bil is empty\n"
-  | bil -> Format.fprintf fmt "%a\n" Bil.pp bil
-
-let pp_result fmt (bil, insn, matches) = 
-  Format.fprintf fmt "%s\n" insn;
-  Format.fprintf fmt "%a\n" pp_bil bil;
-  List.iter ~f:(pp_matched fmt) matches;
-  Format.print_newline ();
+let pp_result fmt report  = 
+  Format.fprintf fmt "%a" Veri.Report.pp report;
   Format.print_flush ()
   
 let verbose_stream s = 
@@ -85,24 +75,22 @@ let ignore_pc_update ev = not (Value.is Event.pc_update ev)
 
 let run rules file verbose = 
   let f arch trace = 
-    let report = 
+    let stat = 
       Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
           let dis = Dis.store_asm dis |> Dis.store_kinds in          
-          let report = Veri_report.create () in
           let policy = make_policy rules in
-          let ctxt = new Veri.context policy report trace in
-          (* let veri = new Veri.t arch dis (fun _ -> true) in *)
+          let ctxt = new Veri.context policy trace in
           let veri = new Veri.t arch dis ignore_pc_update in
-          if verbose then verbose_stream ctxt#data;
+          if verbose then verbose_stream ctxt#reports;
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
-          Ok ctxt'#report) in
-    match report with
+          Ok ctxt'#stat) in
+    match stat with
     | Error er -> 
       let inf = Error.to_string_hum er in
       Printf.eprintf "error in verification: %s" inf
-    | Ok report ->
-      Veri_report.pp Format.std_formatter report in
+    | Ok stat ->
+      Veri_stat.pp Format.std_formatter stat in
   eval file f
 
 module Command = struct

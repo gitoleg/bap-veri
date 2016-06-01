@@ -1,11 +1,8 @@
 open Core_kernel.Std
 open Bap.Std
+open Regular.Std
 open Bap_traces.Std
 open Bap_future.Std
-
-type error = Veri_error.t
-type policy = Veri_policy.t
-type data = bil * string * (Veri_policy.rule * Veri_policy.matched) list
 
 module Disasm : sig
   module Dis = Disasm_expert.Basic
@@ -13,22 +10,33 @@ module Disasm : sig
   type t = (asm, kinds) Dis.t
 end
 
-class context: policy -> Veri_report.t -> Trace.t -> object('s)
+module Report : sig
+  type t [@@deriving bin_io, sexp]
+  include Regular with type t := t
+  val bil  : t -> bil
+  val code : t -> string
+  val insn : t -> string
+  val left : t -> Trace.event list
+  val right: t -> Trace.event list
+  val data : t -> (Veri_policy.rule * Veri_policy.matched) list
+end
+
+class context: Veri_policy.t -> Trace.t -> object('s)
     inherit Veri_traci.context
     method split : 's
     method merge : 's
+    method replay : 's
+    method backup : 's -> 's
+    method other  : 's option
+    method events : Value.Set.t
+    method stat: Veri_stat.t
+    method reports : Report.t stream
     method register_event : Trace.event -> 's
     method discard_event : (Trace.event -> bool) -> 's
-    method events : Value.Set.t
-    method other  : 's option
-    method replay : 's 
-    method report: Veri_report.t
+    method notify_error: Veri_error.t -> 's
     method set_description: string -> 's
-    method notify_error: error -> 's
-    method backup: 's -> 's
-    method set_bil: bil -> 's
+    method set_bil : bil -> 's
     method set_code : string -> 's 
-    method data : data stream
   end
 
 class ['a] t : arch -> Disasm.t -> (Trace.event -> bool) -> object('s)

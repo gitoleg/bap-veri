@@ -1,6 +1,7 @@
 open Core_kernel.Std
 open OUnit2
 open Bap.Std
+open Bap_future.Std
 open Bap_traces.Std
 open Event
 
@@ -64,30 +65,27 @@ let test_policy =
 let eval_trace trace =
   Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
       let dis = Dis.store_asm dis |> Dis.store_kinds in          
-      let report = Veri_report.create () in
-      let ctxt = new Veri.context test_policy report trace in
-      let veri  = new Veri.t arch dis (fun _ -> true) in
-      let ctxt' = 
+      let ctxt = new Veri.context test_policy trace in
+      let veri = new Veri.t arch dis (fun _ -> true) in
+      let hd = Stream.hd ctxt#reports in
+      let _ctxt' = 
         Monad.State.exec (veri#eval_trace trace) ctxt in
-      Ok ctxt'#report)
-
-let first_left_match binds = 
-  let open Option in
-  List.hd binds >>= fun (_, calls) ->
-  List.hd calls >>= fun call ->
-  List.hd call >>= fun (_, (left, _)) -> Some left
+      Ok hd)
 
 let check_left_diff pref trace expected =
   match eval_trace trace with 
   | Error er -> 
     assert_false (Printf.sprintf "%s: %s" pref (Error.to_string_hum er))
-  | Ok report ->
-    match first_left_match (Veri_report.binds report) with 
+  | Ok hd ->
+    match Future.peek hd with 
     | None ->
       assert_false (Printf.sprintf "%s: no left match" pref)
-    | Some left ->
-      let s = Printf.sprintf "%s: diff equality check" pref in
-      assert_bool s (is_equal_events expected left)
+    | Some r ->
+      match Veri.Report.data r with 
+      | [] -> assert_false (Printf.sprintf "%s: no left match" pref)
+      | (rule,(left,_))::_ ->        
+        let s = Printf.sprintf "%s: diff equality check" pref in
+        assert_bool s (is_equal_events expected left)
 
 (** MOV32rr: { EAX := low:32[ESP] } *)
 let test_reg ctxt = 

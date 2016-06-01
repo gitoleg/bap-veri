@@ -1,20 +1,20 @@
 open Core_kernel.Std
 open Bap.Std
+open Regular.Std
 open Bap_traces.Std
 open Bap_future.Std
 
 module SM  = Monad.State
 open SM.Monad_infix
 
-type event = Trace.event
 type 'a u = 'a Bil.Result.u
 type 'a r = 'a Bil.Result.r
+type event = Trace.event [@@deriving bin_io, compare, sexp]
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 type policy = Veri_policy.t
-type matched = Veri_policy.matched
-type rule = Veri_policy.rule
-type data = bil * string * (rule * matched) list
+type matched = Veri_policy.matched [@@deriving bin_io, compare, sexp]
+type rule = Veri_policy.rule [@@deriving bin_io, compare, sexp]
 
 let create_move_event tag cell' data' =  
   Value.create tag Move.({cell = cell'; data = data';})
@@ -53,59 +53,88 @@ module Disasm = struct
   let insn_name = Dis.Insn.name 
 end
 
+module Report = struct
+  type t = {
+    bil  : bil;
+    insn : string;
+    left : event list;
+    right: event list;
+    data : (rule * matched) list;
+    code : string;
+  } [@@deriving bin_io, compare, fields, sexp]
+  
+  type s = t  [@@deriving bin_io, compare, sexp]
+
+  include Regular.Make(struct 
+      type t = s [@@deriving bin_io, compare, sexp]
+
+      let compare = compare
+      let hash = Hashtbl.hash
+      let module_name = Some "Veri.Report"
+      let version = "0.1"
+
+      let pp_code fmt s =
+        let pp fmt s =
+          String.iter ~f:(fun c -> Format.fprintf fmt "%X@ " (Char.to_int c)) s in
+        Format.fprintf fmt "@[<hv>%a@]" pp s
+
+      let pp_evs fmt evs =
+        List.iter ~f:(fun ev -> 
+            Format.(fprintf std_formatter "%a; " Value.pp ev)) evs
+
+      let pp_matched fmt (rule, matched) =
+        let open Veri_policy in
+        Format.fprintf fmt "%a\n%a" Rule.pp rule Matched.pp matched
+
+     let pp fmt t =
+       Format.fprintf fmt "@[<v0>%s %a@,left: %a@,right: %a@,%a@]@."
+         t.insn pp_code t.code pp_evs t.left pp_evs t.right Bil.pp t.bil;
+       List.iter ~f:(pp_matched fmt) t.data;
+       Format.print_newline ()
+
+    end)
+end
+
 module Events = Value.Set
 
-module type S = module type of Set
-
-let print_events pref evs =
-  Format.(fprintf std_formatter "%s: " pref);
-  List.iter ~f:(fun ev -> 
-      Format.(fprintf std_formatter "%a; " Value.pp ev)) evs;
-  Format.print_newline ()
-
-let pp_bytes fmt s =
-  let pp fmt s =
-    String.iter ~f:(fun c -> Format.fprintf fmt "%X@ " (Char.to_int c)) s in
-  Format.fprintf fmt "@[<hv>%a@]" pp s
-
-class context policy report trace = object(self:'s)
+class context policy trace = object(self:'s)
   inherit Veri_traci.context trace as super
-  val report : Veri_report.t = report
   val events = Events.empty
-  val other = None
+  val other  = None
   val descr : string option = None
   val error : error option = None
-  val bil : bil = []
-  val stream' = Stream.create ()
-  val code : string option = None
-
-  method private print_code = match code with
-    | None -> ()
-    | Some code -> 
-      Format.(fprintf std_formatter "code is %a\n" pp_bytes code)
-
+  val bil   : bil = []
+  val stream = Stream.create ()
+  val code  : string option = None
+  val stat  : Veri_stat.t = Veri_stat.create ()
+     
   method set_code str = {< code = Some str >}
 
+  method private make_report ~insn ~left ~right data =
+    Report.Fields.create ~bil ~insn ~left ~right ~data
+      ~code:(Option.value_exn code)
+
   method merge: 's =
-    let report =
+    let stat =
       match error with 
-      | Some er -> Veri_report.notify report er
+      | Some er -> Veri_stat.notify stat er
       | None ->
         match descr with
-        | None -> report
+        | None -> stat
         | Some name ->
           let events = Option.(value_exn self#other)#events in
           let events' = self#events in
           match Veri_policy.denied policy name events events' with
-          | [] -> report 
+          | [] -> Veri_stat.success stat name
           | results ->
-            self#print_code;
-            print_events "left" (Set.to_list events);
-            print_events "right" (Set.to_list events');
-            Signal.send (snd stream') (bil, name, results);
-            Veri_report.update report name results in
+            let report = self#make_report ~insn:name ~left:(Set.to_list events)
+                ~right:(Set.to_list events') results in
+            Signal.send (snd stream) report;
+            Veri_stat.failbil stat name  in
     {<other = None; error = None; descr = None; bil = [];
-      events = Events.empty; report = report >}
+      events = Events.empty; stat = stat >}
+
+  method stat = stat
 
   method replay =
     let new_i = Option.value_exn other in
@@ -114,7 +143,6 @@ class context policy report trace = object(self:'s)
   method events: Events.t = events
   method split = self#backup self
   method other = other
-  method report = report
   method set_description s = {<descr = Some s >}
   method register_event ev = {< events = Set.add events ev >}
 
@@ -126,7 +154,7 @@ class context policy report trace = object(self:'s)
   method notify_error er = {<error = Some er >}
   method backup someone = {<other = Some someone; events = Events.empty >}
   method set_bil bil = {< bil = bil >}
-  method data : data stream = fst stream'
+  method reports : Report.t stream = fst stream
 end
 
 let target_info arch = 
@@ -183,21 +211,22 @@ class ['a] t arch dis is_interesting =
 
     method private try_emit_read var data : 'a u = 
       SM.get () >>= fun ctxt ->
-      if is_never_read (self_events ctxt) var then 
+      if is_never_read (self_events ctxt) var then
         self#update_event (create_reg_read var data)
       else SM.return ()
-
+          
     (** [lookup var] - returns a result, bound with variable.
         Search starts from self events, if it was write access to given 
-        variable at current step. And if it was, then no read events emitted
-        and result of write access returned.
+        variable at current step. And if it was, then result of write 
+        access returned. And read event is emitted only if previous read 
+        event with same var is absent.
         Otherwise searching continues as written above for [resolve_var], 
         with emitting register read event. *)
     method! lookup var : 'a r =
       SM.get () >>= fun ctxt ->
       match find_reg_write (self_events ctxt) (same_var var) with
       | Some mv -> 
-        self#try_emit_read var (Move.data mv) >>= fun () ->
+        (* self#try_emit_read var (Move.data mv) >>= fun () -> *)
         self#eval_exp (Bil.int (Move.data mv))
       | None ->
         self#resolve_var var >>= fun r ->
@@ -265,8 +294,9 @@ class ['a] t arch dis is_interesting =
 
     (** [eval_load ~mem ~addr endian size] - returns a result bound with [addr].
         Search starts from self events, if it was write access to given
-        address at current step. And if it was, then no load events emitted
-        and result of write access returned.
+        address at current step. And if it was, thenresult of write access 
+        returned. And load event emitted only if previous load event with
+        same address is absent.
         Otherwise searching continues as written above for [resolve_addr], 
         with emitting memory load event. *)
     method! eval_load ~mem ~addr endian size =
@@ -302,13 +332,6 @@ class ['a] t arch dis is_interesting =
         match Disasm.insn dis mem with
         | Error er -> SM.update (fun c -> c#notify_error er)
         | Ok insn -> self#eval_insn insn
-
-    method private print_event ev = 
-      let s = Value.pps () ev in
-      if Value.is Event.code_exec ev then 
-        Format.(fprintf std_formatter "\n%s\n" s)
-      else
-        Format.(fprintf std_formatter "%s\n" s)
 
     method! eval_event ev = 
       let is_after_code () = 
