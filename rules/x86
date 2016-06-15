@@ -1,0 +1,41 @@
+//grammar: ACTION & INSN & LEFT & RIGHT
+//ACTION is mandatory field and could be either SKIP either DENY.
+
+//we completle the following ignore because bil is either empty, 
+//either contains unknown expressions or special statements
+SKIP & NOOP. & & 
+SKIP & RDTSC & &
+SKIP & SYSCALL.* & &
+SKIP & CPUID & &
+SKIP & XGETBV & &
+
+//we suspect it's a broken insn - because of different results between
+//tracer and bil
+SKIP & SAR.* & &
+
+//XOR is suspected to be broken, because in case of same operands,
+//e.g. RAX and RAX, it reads nothing, just write zero to destination
+SKIP & XOR.* & .* => .* &
+
+//Our flags reads(writes) are subset of tracer reads(writes)
+//but writes should be with same value
+SKIP & .* & .F => .* & 
+DENY & .* & .F <= .* & (\1) <= .*
+SKIP & .* & .F <= .* &
+
+//the following contains a conditional branch, so if condition is not
+//satisfied then the same value is written (the same as was read)
+SKIP & CMPXCHG.* & .* <= .* &
+
+//it's a mistake to write such things - but we should now what is
+//wrong except the following
+SKIP & .* & & .F <= .*
+SKIP & .* & & .F => .*
+SKIP & .* & & RSP <= .*
+SKIP & CMOV.* & &
+SKIP & PUSH.* & &
+SKIP & CALL.* & &
+
+//last rules means that every event should has a pair
+DENY & .* & .* &
+DENY & .* &  & .*
