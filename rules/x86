@@ -1,41 +1,45 @@
-//grammar: ACTION & INSN & LEFT & RIGHT
+//grammar: ACTION INSN LEFT RIGHT
 //ACTION is mandatory field and could be either SKIP either DENY.
+//If field contains a space, e.g. RAX => .*, then necessary to
+//put it in quotes: "RAX => .*". Single quotes also supported.
+//Comments are available with // at the beginnig of string. 
 
-//we completle the following ignore because bil is either empty, 
+//we completle ignore the following because bil is either empty, 
 //either contains unknown expressions or special statements
-SKIP & NOOP. & & 
-SKIP & RDTSC & &
-SKIP & SYSCALL.* & &
-SKIP & CPUID & &
-SKIP & XGETBV & &
+SKIP NOOP. '' '' 
+SKIP RDTSC '' ''
+SKIP SYSCALL.* '' ''
+SKIP CPUID '' ''
+SKIP XGETBV '' ''
 
 //we suspect it's a broken insn - because of different results between
 //tracer and bil
-SKIP & SAR.* & &
+SKIP SAR.* '' ''
 
 //XOR is suspected to be broken, because in case of same operands,
 //e.g. RAX and RAX, it reads nothing, just write zero to destination
-SKIP & XOR.* & .* => .* &
+SKIP XOR.* '.* => .*' ''
 
 //Our flags reads(writes) are subset of tracer reads(writes)
 //but writes should be with same value
-SKIP & .* & .F => .* & 
-DENY & .* & .F <= .* & (\1) <= .*
-SKIP & .* & .F <= .* &
+SKIP .* '.F => .*' '' 
+DENY .* '(.F) <= .*' '\\1 <= .*'
+SKIP .* '.F <= .*' ''
 
-//the following contains a conditional branch, so if condition is not
-//satisfied then the same value is written (the same as was read)
-SKIP & CMPXCHG.* & .* <= .* &
+//the following insn contains a conditional branch, so if condition is not
+//satisfied then the same value is written (the same as was read).
+//Necessary to think about this case
+SKIP CMPXCHG.* '.* <= .*' ''
 
-//it's a mistake to write such things - but we should now what is
+//CMOV in our lifter works a bit unstrict. it reads and writes the same value
+//if condition wasn't succeded
+SKIP CMOV.* '' ''
+
+//it's a mistake to write such things - but we should now what else is
 //wrong except the following
-SKIP & .* & & .F <= .*
-SKIP & .* & & .F => .*
-SKIP & .* & & RSP <= .*
-SKIP & CMOV.* & &
-SKIP & PUSH.* & &
-SKIP & CALL.* & &
+SKIP SH(L|R).* '' '.F <= .*'
+SKIP SH(L|R).* '' '.F => .*'
 
 //last rules means that every event should has a pair
-DENY & .* & .* &
-DENY & .* &  & .*
+DENY .* '.*' ''
+DENY .* '' '.*' 

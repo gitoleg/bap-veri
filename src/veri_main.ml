@@ -14,30 +14,13 @@ let () =
     Printf.eprintf "failed to load plugin from %s: %s" 
       path (Error.to_string_hum er)
 
-let action_of_string = function 
-  | "SKIP" -> Rule.skip
-  | "DENY" -> Rule.deny
-  | str -> 
-    Printf.eprintf "only SKIP | DENY actions should be used: %s\n" str;
-    exit 1
-
-let rule_of_string s = 
-  if String.strip s = "" || String.is_prefix ~prefix:"//" s then None
-  else
-    let fields = String.split ~on:'&' s |> List.map ~f:String.strip in
-    match fields with
-    | [action; insn; left; right] ->
-      let rule = Rule.create ~insn ~left ~right (action_of_string action) in
-      Some rule
-    | _ -> 
-      Printf.eprintf "Fields count doesn't match to rule grammar: %s\n" s;
-      exit 1
-
 let read_rules file = 
-  let inc = In_channel.create file in
-  let rules = In_channel.input_lines inc |> List.filter_map ~f:rule_of_string in
-  In_channel.close inc;
-  rules
+  let rules = Rules_reader.read file in
+  List.filter_map ~f:(function 
+      | Ok r -> Some r
+      | Error er -> 
+        Format.(fprintf err_formatter "%s\n" (Error.to_string_hum er));
+        None) rules
 
 let string_of_error = function
   | `Protocol_error er -> 
