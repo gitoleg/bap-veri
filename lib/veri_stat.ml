@@ -44,10 +44,13 @@ let disasm_count t =  errors_count t
         | `Disasm_error _ -> true 
         | _ -> false)
 
-let lifter_count t =  errors_count t 
-    ~f:(function 
-        | `Lifter_error _ -> true 
-        | _ -> false)
+let mislifted t = 
+  List.fold_left ~init:String.Set.empty 
+    ~f:(fun names errs ->
+        match errs with 
+        | `Lifter_error (insn,_) -> Set.add names insn
+        | _ -> names) t.errors |>
+  Set.to_list
 
 type s = t [@@deriving bin_io, compare, sexp]
 
@@ -58,18 +61,26 @@ include Regular.Make(struct
     let module_name = Some "Veri_stat"
     let version = "0.1"
 
+    let pp_count fmt (name,cnt) = 
+      if cnt <> 0 then
+        Format.fprintf fmt "%s: %d; " name cnt
+
+    let pp_lift_errors fmt names = 
+      List.iter ~f:(fun insn ->
+          Format.fprintf fmt "%s mis-lifted\n" insn) names
+
     let pp fmt t = 
       Map.iteri ~f:(fun ~key ~data -> 
           let ok, er = data in
           if er <> 0 then
             Format.fprintf fmt "%s mis-executed %d times(%d successfully)\n"
               key er ok) t.calls;
-      Format.fprintf fmt "errors statistic: \
-                          bil errors : %d; \
-                          overloaded chunks: %d; damaged chunks: %d; \
-                          disasm errors: %d; lifter errors: %d\n"
-        (bil_errors t) (overloaded_count t) (damaged_count t) (disasm_count t)
-        (lifter_count t)
+      Format.fprintf fmt "%a" pp_lift_errors (mislifted t);
+      Format.fprintf fmt "%a%a%a%a\n"
+        pp_count ("bil errors", bil_errors t)
+        pp_count ("overloaded chunks", overloaded_count t)
+        pp_count ("damaged chunks", damaged_count t)
+        pp_count ("disasm errors", disasm_count t);
   end)
 
 

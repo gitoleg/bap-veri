@@ -9,6 +9,7 @@ module Field = struct
   let of_string = ident
   let empty = ""
   let is_empty x = x = empty
+  let any = ".*"
 end
 
 type field = Field.t [@@deriving bin_io, compare, sexp]
@@ -35,6 +36,15 @@ module Rule = struct
       right = of_opt right; 
     }
 
+  let create' ~insn ?left ?right action = 
+    let of_opt = 
+      Option.value_map ~default:Field.empty ~f:ident in {
+      action; 
+      insn; 
+      left  = of_opt left; 
+      right = of_opt right; 
+    }
+
   type s = t [@@deriving bin_io, compare, sexp]
   include Regular.Make(struct
       type t = s [@@deriving bin_io, compare, sexp]
@@ -47,7 +57,7 @@ module Rule = struct
         let act = match rule.action with
           | Skip -> "Skip"
           | Deny -> "Deny" in
-        Format.fprintf fmt "%s %s %s %s ;" 
+        Format.fprintf fmt "%s : %s : %s : %s" 
           act rule.insn rule.left rule.right
     end)
 end
@@ -95,18 +105,28 @@ type entry = {
 
 type t = entry list
 
-let make_trial s = Pcre.regexp ~flags:[`ANCHORED] s
+let make_trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
 
+let make_trial_opt s = 
+  try
+    Some (make_trial_exn s)
+  with Pcre.Error _ -> None
+
+let make_trial_default s = match make_trial_opt s with
+  | Some s -> s
+  | None -> make_trial_exn ""
+  
+    
 let sep = " : "
 
 let make_both_trial rule = 
   let s = String.concat ~sep [Rule.left rule; Rule.right rule] in
-  make_trial s
+  make_trial_exn s
 
 let make_entry_exn rule = {
-  insn_trial = make_trial (Rule.insn rule);
-  left_trial = make_trial (Rule.left rule);
-  right_trial = make_trial (Rule.right rule);
+  insn_trial = make_trial_exn (Rule.insn rule);
+  left_trial = make_trial_exn (Rule.left rule);
+  right_trial = make_trial_default (Rule.right rule);
   both_trial = make_both_trial rule;
   rule;
 } 
@@ -119,7 +139,8 @@ let make_entry_opt rule =
     None
    
 let empty = []
-let add t rule : t = match make_entry_opt rule with
+let add t rule : t = 
+  match make_entry_opt rule with
   | None -> t
   | Some e -> e :: t
 
@@ -129,6 +150,16 @@ let sat_event e ev = sat e (Value.pps () ev)
 let string_of_events ev ev' = 
   String.concat ~sep [Value.pps () ev; Value.pps () ev']
   
+let test rule =
+  if Rule.action rule = Rule.deny then
+    let () = Format.(fprintf std_formatter "test rule: %a\n" Rule.pp rule) in
+    let str0 = "ZF <= true : ZF <= false" in
+    let str1 = "ZF <= true : ZF <= true" in
+    let rex = make_both_trial rule in
+    let r0 = Pcre.pmatch ~rex str0 in
+    let r1 = Pcre.pmatch ~rex str1 in
+    Format.(fprintf std_formatter "%a test: %b, %b\n" Rule.pp rule r0 r1)
+
 let sat_events e ev ev' =
   Value.typeid ev = Value.typeid ev' &&
   sat e (string_of_events ev ev')
@@ -206,7 +237,7 @@ let match_left t events =
 let match_both t left right = 
   let workers = Set.to_array left in      
   let jobs = Set.to_array right in
-  let (flow,_) = FFMF.maxflow (t.both_trial, workers, jobs) G.V.Source G.V.Sink  in
+  let (flow,_) = FFMF.maxflow (t.both_trial, workers, jobs) G.V.Source G.V.Sink in
   Array.foldi workers ~init:([],[])
     ~f:(fun i (acc, acc') w ->   
         match Array.findi jobs ~f:(fun j e ->
@@ -250,6 +281,7 @@ let denied entries insn events events' =
   let rec loop acc entries (evs,evs') = match entries with
     | [] -> acc
     | e :: es ->
+      (* test e.rule; *)
       match match_events' e insn evs evs' with
       | None -> loop acc es (evs,evs')
       | Some matched -> 

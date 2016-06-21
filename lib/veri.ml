@@ -126,7 +126,7 @@ class context policy trace = object(self:'s)
         | None -> stat
         | Some name ->
           let events = Option.(value_exn self#other)#events in
-          let events' = self#events in         
+          let events' = self#events in
           match Veri_policy.denied policy name events events' with
           | [] -> Veri_stat.success stat name
           | results ->
@@ -205,25 +205,16 @@ class ['a] t arch dis is_interesting =
         | Some mv -> self#eval_exp (Bil.int (Move.data mv))
         | None -> super#lookup var
 
-    method private try_emit_read var data : 'a u = 
-      SM.get () >>= fun ctxt ->
-      if is_never_read (self_events ctxt) var then
-        self#update_event (create_reg_read var data)
-      else SM.return ()
-
     (** [lookup var] - returns a result, bound with variable.
         Search starts from self events, if it was write access to given 
         variable at current step. And if it was, then result of write 
-        access returned. And read event is emitted only if previous read 
-        event with same var is absent.
+        access returned and no read event is emitted.
         Otherwise searching continues as written above for [resolve_var], 
-        with emitting register read event. *)
+        with emitting register_read event. *)
     method! lookup var : 'a r =
       SM.get () >>= fun ctxt ->
       match find_reg_write (self_events ctxt) (same_var var) with
-      | Some mv -> 
-        (* self#try_emit_read var (Move.data mv) >>= fun () -> *)
-        self#eval_exp (Bil.int (Move.data mv))
+      | Some mv -> self#eval_exp (Bil.int (Move.data mv))
       | None ->
         self#resolve_var var >>= fun r ->
         match value r with
@@ -291,8 +282,7 @@ class ['a] t arch dis is_interesting =
     (** [eval_load ~mem ~addr endian size] - returns a result bound with [addr].
         Search starts from self events, if it was write access to given
         address at current step. And if it was, then result of write access 
-        returned. And load event emitted only if previous load event with
-        same address is absent.
+        returned and no load event is emitted.
         Otherwise searching continues as written above for [resolve_addr], 
         with emitting memory load event. *)
     method! eval_load ~mem ~addr endian size =

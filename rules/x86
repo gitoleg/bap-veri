@@ -23,7 +23,7 @@ SKIP XOR.* '.* => .*' ''
 //Our flags reads(writes) are subset of tracer reads(writes)
 //but writes should be with same value
 SKIP .* '.F => .*' '' 
-DENY .* '(.F) <= .*' '\\1 <= .*'
+DENY .* '(.F) <= .*' '\1 <= .*'
 SKIP .* '.F <= .*' ''
 
 //the following insn contains a conditional branch, so if condition is not

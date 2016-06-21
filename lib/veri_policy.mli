@@ -6,6 +6,16 @@ open Regular.Std
 type event = Trace.event
 type events = Value.Set.t
 
+module Field : sig
+  type t [@@deriving bin_io, compare, sexp] 
+  
+  val of_string: string -> t
+  val any: t
+  val empty: t
+end
+
+type field = Field.t [@@deriving bin_io, compare, sexp]
+
 (** rule = ACTION : INSN : EVENT : EVENT  *)
 module Rule : sig
 
@@ -17,6 +27,13 @@ module Rule : sig
 
   val create:
     ?insn:string -> ?left:string -> ?right:string -> action -> t
+
+  val create':
+    insn:field -> ?left:field -> ?right:field -> action -> t
+    
+  val insn  : t -> string
+  val left  : t -> string
+  val right : t -> string
 
   include Regular with type t := t
 end

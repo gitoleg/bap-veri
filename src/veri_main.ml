@@ -44,8 +44,8 @@ let eval file f =
 let make_policy = function
   | None -> Veri_policy.empty
   | Some file -> 
-    let rules = read_rules file in
-    List.fold ~f:Veri_policy.add ~init:Veri_policy.empty rules
+    read_rules file |>
+    List.fold ~f:Veri_policy.add ~init:Veri_policy.empty 
 
 let pp_result fmt report  = 
   Format.fprintf fmt "%a" Veri.Report.pp report;
