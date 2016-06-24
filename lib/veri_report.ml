@@ -52,10 +52,8 @@ let lifter_count t =  errors_count t
         | `Lifter_error _ -> true 
         | _ -> false)
 
-type s = t [@@deriving bin_io, compare, sexp]
-
 include Regular.Make(struct
-    type t = s [@@deriving bin_io, compare, sexp]
+    type nonrec t = t [@@deriving bin_io, compare, sexp]
     let compare = compare
     let hash = Hashtbl.hash
 

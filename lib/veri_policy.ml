@@ -36,18 +36,8 @@ module Rule = struct
       right = of_opt right; 
     }
 
-  let create' ~insn ?left ?right action = 
-    let of_opt = 
-      Option.value_map ~default:Field.empty ~f:ident in {
-      action; 
-      insn; 
-      left  = of_opt left; 
-      right = of_opt right; 
-    }
-
-  type s = t [@@deriving bin_io, compare, sexp]
   include Regular.Make(struct
-      type t = s [@@deriving bin_io, compare, sexp]
+      type nonrec t = t [@@deriving bin_io, compare, sexp]
       let compare = compare
       let hash = Hashtbl.hash
       let module_name = Some "Veri_policy.Rule"
@@ -64,13 +54,13 @@ end
 
 type event = Trace.event [@@deriving bin_io, compare, sexp]
 type events = Value.Set.t
+type trial = Pcre.regexp
 
 module Matched = struct
   type t = event list * event list [@@deriving bin_io, sexp]
-  type s = t [@@deriving bin_io, compare, sexp]
 
   include Regular.Make(struct
-      type t = s [@@deriving bin_io, compare, sexp]
+      type nonrec t = t [@@deriving bin_io, compare, sexp]
       let compare = compare
       let hash = Hashtbl.hash
       let module_name = Some "Veri_policy.Matched"
@@ -91,9 +81,8 @@ module Matched = struct
     end)
 end
 
+type matched = Matched.t [@@deriving bin_io, compare, sexp]
 type rule = Rule.t [@@deriving bin_io, compare, sexp]
-type trial = Pcre.regexp
-type matched = event list * event list [@@deriving bin_io, compare, sexp]
 
 type entry = {
   insn_trial : trial;
@@ -107,7 +96,7 @@ type t = entry list
 
 let make_trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
 
-let make_trial_opt s = 
+let make_trial_opt s =
   try
     Some (make_trial_exn s)
   with Pcre.Error _ -> None
@@ -115,8 +104,7 @@ let make_trial_opt s =
 let make_trial_default s = match make_trial_opt s with
   | Some s -> s
   | None -> make_trial_exn ""
-  
-    
+
 let sep = " : "
 
 let make_both_trial rule = 
@@ -150,16 +138,6 @@ let sat_event e ev = sat e (Value.pps () ev)
 let string_of_events ev ev' = 
   String.concat ~sep [Value.pps () ev; Value.pps () ev']
   
-let test rule =
-  if Rule.action rule = Rule.deny then
-    let () = Format.(fprintf std_formatter "test rule: %a\n" Rule.pp rule) in
-    let str0 = "ZF <= true : ZF <= false" in
-    let str1 = "ZF <= true : ZF <= true" in
-    let rex = make_both_trial rule in
-    let r0 = Pcre.pmatch ~rex str0 in
-    let r1 = Pcre.pmatch ~rex str1 in
-    Format.(fprintf std_formatter "%a test: %b, %b\n" Rule.pp rule r0 r1)
-
 let sat_events e ev ev' =
   Value.typeid ev = Value.typeid ev' &&
   sat e (string_of_events ev ev')
@@ -281,7 +259,6 @@ let denied entries insn events events' =
   let rec loop acc entries (evs,evs') = match entries with
     | [] -> acc
     | e :: es ->
-      (* test e.rule; *)
       match match_events' e insn evs evs' with
       | None -> loop acc es (evs,evs')
       | Some matched -> 

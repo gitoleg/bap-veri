@@ -1,29 +1,31 @@
-OASISFormat: 0.4
-Name:        bil-veri
-Version:     0.2
-Synopsis:    Bil verification tool
-Authors:     BAP Team
-Maintainers: Ivan Gotovchits <ivg@ieee.org>,
-             Oleg Kamenkov <forown@yandex.ru>
-License:     MIT
-Copyrights:  (C) 2016 Carnegie Mellon University
-Plugins:     META (0.4), DevFiles (0.4)
-BuildTools:  ocamlbuild
-BuildDepends: core_kernel, ppx_jane
+OASISFormat:  0.4
+Name:         bil-veri
+Version:      0.2
+Synopsis:     Bil verification tool
+Authors:      BAP Team
+Maintainers:  Ivan Gotovchits <ivg@ieee.org>,
+              Oleg Kamenkov <forown@yandex.ru>
+License:      MIT
+Copyrights:   (C) 2016 Carnegie Mellon University
+Plugins:      META (0.4), DevFiles (0.4)
+BuildTools:   ocamlbuild
+BuildDepends: ppx_jane, core_kernel, pcre
 
 Library veri
   Path:           lib
   FindLibName:    bap-veri
   Modules:        Veri, Veri_error, Veri_stat, Veri_traci, Veri_policy
   CompiledObject: best
-  BuildDepends:   bap, bap-traces, pcre
+  NativeOpt:      -pp 'ppx-jane -dump-ast'
+  ByteOpt:        -pp 'ppx-jane -dump-ast'
+  BuildDepends:   bap, bap-traces
 
 Library veri_test
-  Path:            tests
-  Install:         false
-  CompiledObject:  best
-  Modules:         Veri_test
-  BuildDepends:    bap, bap-traces, bap-veri, oUnit
+  Path:           tests
+  Install:        false
+  CompiledObject: best
+  Modules:        Veri_test
+  BuildDepends:   bap, bap-traces, bap-veri, oUnit
 
 Executable veri_main
   Path:           src

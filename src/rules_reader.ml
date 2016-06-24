@@ -1,5 +1,4 @@
 open Core_kernel.Std
-open Regular.Std
 open Veri_policy
 
 let comments = "//"
