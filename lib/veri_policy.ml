@@ -38,12 +38,11 @@ end
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
 type t = rule list
  
-let sep = " : "
 let empty = []
 let add t rule : t = rule :: t
 
 let string_of_events ev ev' = 
-  String.concat ~sep [Value.pps () ev; Value.pps () ev']
+  String.concat ~sep:" " [Value.pps () ev; Value.pps () ev']
   
 let sat_events r ev ev' =
   Value.typeid ev = Value.typeid ev' &&
@@ -134,7 +133,7 @@ let match_both rule left right =
   | ms -> Some ms
 
 let is_sat_insn rule insn = 
-  not (Rule.is_empty_insn rule) && Rule.Match.insn rule insn
+  not (Rule.(is_empty (insn rule))) && Rule.Match.insn rule insn
 
 let match_events rule insn events events' =
   match is_sat_insn rule insn with
@@ -142,7 +141,7 @@ let match_events rule insn events events' =
   | true -> 
     let left = Set.diff events events' in
     let right = Set.diff events' events in
-    match Rule.is_empty_left rule, Rule.is_empty_right rule with
+    match Rule.(is_empty (left rule)), Rule.(is_empty (right rule)) with
     | true, true -> Some (Set.to_list events, Set.to_list events')
     | true, _ -> match_right rule right
     | _, true -> match_left rule left

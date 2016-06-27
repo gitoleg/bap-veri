@@ -12,67 +12,61 @@ type t = {
   both   : field;
   left   : field;
   right  : field;
-}
+} [@@deriving fields]
 
-let sep = " : "
 let empty = ""
-let is_empty s = s = empty
-
-let action t = t.action
 let skip = Skip
 let deny = Deny
+let action t = t.action
 
 let string_of_action = function
   | Skip -> "Skip"
   | Deny -> "Deny"
 
 let trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
-let field_exn s = trial_exn s, s
 
-let field_opt s =
-  try
-    Some (field_exn s)
-  with Pcre.Error _ -> None
+module Field = struct
+  type t = field
 
-let field_err s = 
-  try
-    Ok (field_exn s)
-  with Pcre.Error _ -> 
-    let s = Printf.sprintf "error in field %s" s in
-    Error (Error.of_string s)
+  let create_exn s = trial_exn s, s
 
-let is_backreferenced = 
+  let create_err s =
+    try
+      Ok (create_exn s)
+    with Pcre.Error _ -> 
+      let s = Printf.sprintf "error in field %s" s in
+      Error (Error.of_string s)
+
+  let is_empty f = snd f = empty
+end
+
+let is_empty = Field.is_empty
+
+let contains_backreference = 
   let rex = Pcre.regexp "\\[0-9]" in
   fun s -> Pcre.pmatch ~rex s
 
+let contains_space s = String.exists ~f:(fun c -> c = ' ') s
+
 let make_right_part s = 
-  if is_backreferenced s then
+  if contains_backreference s then
     Ok (trial_exn empty, s)
-  else field_err s
+  else Field.create_err s
 
 let create ?insn ?left ?right action =
   let open Result in
   let of_opt = Option.value_map ~default:empty ~f:ident in 
-  let both = String.concat ~sep [of_opt left; of_opt right] in    
-  field_err (of_opt insn) >>= fun insn ->
-  field_err both >>= fun both ->
-  field_err (of_opt left) >>= fun left ->
+  let both = String.concat ~sep:" " [of_opt left; of_opt right] in    
+  Field.create_err (of_opt insn) >>= fun insn ->
+  Field.create_err both >>= fun both ->
+  Field.create_err (of_opt left) >>= fun left ->
   make_right_part (of_opt right) >>= fun right ->    
   Ok ({action; insn; both; left; right;})
-
-let is_empty_field field = is_empty (snd field)
-let is_empty_insn  t = is_empty_field t.insn
-let is_empty_left  t = is_empty_field t.left
-let is_empty_right t = is_empty_field t.right
-
-let to_string t = 
-  Printf.sprintf "%s %s %s %s"
-    (string_of_action t.action) (snd t.insn) (snd t.left) (snd t.right)
 
 module Match = struct
 
   type m = t -> string -> bool
-    
+
   let match_field field s = Pcre.pmatch ~rex:(fst field) s
   let insn t  = match_field t.insn
   let both t  = match_field t.both
@@ -81,7 +75,17 @@ module Match = struct
 
 end
 
-module Of_string = struct
+module S = struct
+
+  type nonrec t = t
+
+  let to_string t = 
+    let of_field f = 
+      if Field.is_empty f then "''"
+      else if contains_space (snd f) then Printf.sprintf "'%s'" (snd f)
+      else snd f in
+    Printf.sprintf "%s %s %s %s" (string_of_action t.action) 
+      (of_field t.insn) (of_field t.left) (of_field t.right)
 
   let rex = Pcre.regexp "'.*?'|\".*?\"|\\S+"
   let is_quote c = c = '\"' || c = '\''
@@ -120,15 +124,11 @@ module Of_string = struct
     action_err action >>= fun action' ->
     create ~insn ~left ~right action'
 
+  let of_string str = ok_exn (make_rule str)
+
 end
 
-let of_string_err = Of_string.make_rule
-
-module S : Stringable with type t = t = struct
-  type nonrec t = t
-  let of_string str = ok_exn (Of_string.make_rule str)
-  let to_string = to_string
-end
+let of_string_err = S.make_rule
 
 include Sexpable.Of_stringable(S)
 include Binable.Of_stringable(S)
@@ -141,7 +141,5 @@ include Regular.Make(struct
     let module_name = Some "Veri_rule"
     let version = "0.1"
 
-    let pp fmt t = 
-      Format.fprintf fmt "%s %s %s %s"
-        (string_of_action t.action) (snd t.insn) (snd t.left) (snd t.right)
+    let pp fmt t = Format.fprintf fmt "%s" (to_string t)
   end)
