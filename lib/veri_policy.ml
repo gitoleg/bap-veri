@@ -4,57 +4,11 @@ open Bap.Std
 open Bap_traces.Std
 open Regular.Std
 
-module Field = struct
-  type t = string [@@deriving bin_io, compare, sexp]
-  let of_string = ident
-  let empty = ""
-  let is_empty x = x = empty
-  let any = ".*"
-end
-
-type field = Field.t [@@deriving bin_io, compare, sexp]
-
-module Rule = struct
-  type action = Skip | Deny [@@deriving bin_io, compare, sexp]
-
-  type t = {
-    action : action;
-    insn   : field;
-    left   : field;
-    right  : field;
-  } [@@deriving bin_io, compare, fields, sexp]
-
-  let skip = Skip
-  let deny = Deny
-
-  let create ?insn ?left ?right action  = 
-    let of_opt = 
-      Option.value_map ~default:Field.empty ~f:ident in {
-      action; 
-      insn  = of_opt insn; 
-      left  = of_opt left; 
-      right = of_opt right; 
-    }
-
-  include Regular.Make(struct
-      type nonrec t = t [@@deriving bin_io, compare, sexp]
-      let compare = compare
-      let hash = Hashtbl.hash
-      let module_name = Some "Veri_policy.Rule"
-      let version = "0.1"
-
-      let pp fmt rule = 
-        let act = match rule.action with
-          | Skip -> "Skip"
-          | Deny -> "Deny" in
-        Format.fprintf fmt "%s : %s : %s : %s" 
-          act rule.insn rule.left rule.right
-    end)
-end
+module Rule = Veri_rule
 
 type event = Trace.event [@@deriving bin_io, compare, sexp]
 type events = Value.Set.t
-type trial = Pcre.regexp
+type rule = Rule.t
 
 module Matched = struct
   type t = event list * event list [@@deriving bin_io, sexp]
@@ -82,68 +36,21 @@ module Matched = struct
 end
 
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
-type rule = Rule.t [@@deriving bin_io, compare, sexp]
-
-type entry = {
-  insn_trial : trial;
-  left_trial : trial;
-  right_trial: trial;
-  both_trial : trial;
-  rule  : rule;
-}
-
-type t = entry list
-
-let make_trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
-
-let make_trial_opt s =
-  try
-    Some (make_trial_exn s)
-  with Pcre.Error _ -> None
-
-let make_trial_default s = match make_trial_opt s with
-  | Some s -> s
-  | None -> make_trial_exn ""
-
+type t = rule list
+ 
 let sep = " : "
-
-let make_both_trial rule = 
-  let s = String.concat ~sep [Rule.left rule; Rule.right rule] in
-  make_trial_exn s
-
-let make_entry_exn rule = {
-  insn_trial = make_trial_exn (Rule.insn rule);
-  left_trial = make_trial_exn (Rule.left rule);
-  right_trial = make_trial_default (Rule.right rule);
-  both_trial = make_both_trial rule;
-  rule;
-} 
-
-let make_entry_opt rule = 
-  try
-    Some (make_entry_exn rule)
-  with Pcre.Error _ -> 
-    Printf.eprintf "pcre error for %s\n" (Rule.pps () rule);
-    None
-   
 let empty = []
-let add t rule : t = 
-  match make_entry_opt rule with
-  | None -> t
-  | Some e -> e :: t
-
-let sat rex s = Pcre.pmatch ~rex s
-let sat_event e ev = sat e (Value.pps () ev)
+let add t rule : t = rule :: t
 
 let string_of_events ev ev' = 
   String.concat ~sep [Value.pps () ev; Value.pps () ev']
   
-let sat_events e ev ev' =
+let sat_events r ev ev' =
   Value.typeid ev = Value.typeid ev' &&
-  sat e (string_of_events ev ev')
+  Rule.Match.both r (string_of_events ev ev')
 
 module G = struct
-  type t = trial * event array * event array
+  type t = rule * event array * event array
   module V = struct
     type t = Source | Sink | Person of int | Task of int [@@deriving compare]
     let hash = Hashtbl.hash
@@ -158,7 +65,7 @@ module G = struct
   end
   type dir = Succ | Pred
 
-  let iter dir f (expect, workers, jobs) v = 
+  let iter dir f (rule, workers, jobs) v = 
     match v,dir with
     | V.Source,Pred -> ()
     | V.Source,Succ ->
@@ -172,13 +79,13 @@ module G = struct
       f @@ E.make V.Source p
     | V.Person i as p,Succ ->
       Array.iteri jobs ~f:(fun j job ->
-          if sat_events expect workers.(i) job
+          if sat_events rule workers.(i) job
           then f (E.make p (V.Task j)))
     | V.Task j as t,Succ ->
       f @@ E.make t V.Sink
     | V.Task j as t,Pred ->
       Array.iteri workers ~f:(fun i worker ->
-          if sat_events expect worker jobs.(j)
+          if sat_events rule worker jobs.(j)
           then f (E.make (V.Person i) t))
 
   let iter_succ_e = iter Succ
@@ -199,23 +106,24 @@ end
 
 module FFMF = Flow.Ford_Fulkerson(G)(F)
 
-let single_match trial events =
-  List.filter ~f:(sat_event trial) (Set.to_list events)
+let single_match fmatch events =
+  let f ev = fmatch (Value.pps () ev) in   
+  List.filter ~f (Set.to_list events)
 
-let match_right t events = 
-  match single_match t.right_trial events with 
+let match_right rule events = 
+  match single_match (Rule.Match.right rule) events with 
   | [] -> None
   | ms -> Some ([], ms)  
 
-let match_left t events = 
-  match single_match t.left_trial events with 
+let match_left rule events = 
+  match single_match (Rule.Match.left rule) events with 
   | [] -> None
   | ms -> Some (ms,[])  
 
-let match_both t left right = 
+let match_both rule left right = 
   let workers = Set.to_array left in      
   let jobs = Set.to_array right in
-  let (flow,_) = FFMF.maxflow (t.both_trial, workers, jobs) G.V.Source G.V.Sink in
+  let (flow,_) = FFMF.maxflow (rule, workers, jobs) G.V.Source G.V.Sink in
   Array.foldi workers ~init:([],[])
     ~f:(fun i (acc, acc') w ->   
         match Array.findi jobs ~f:(fun j e ->
@@ -225,27 +133,20 @@ let match_both t left right =
   | [], [] -> None
   | ms -> Some ms
 
-let is_empty_insn  t = Field.is_empty (Rule.insn t.rule)
-let is_empty_left  t = Field.is_empty (Rule.left t.rule)
-let is_empty_right t = Field.is_empty (Rule.right t.rule)
-let is_sat_insn t insn = not (is_empty_insn t) && sat t.insn_trial insn
+let is_sat_insn rule insn = 
+  not (Rule.is_empty_insn rule) && Rule.Match.insn rule insn
 
-let match_events' t insn events events' =
-  match is_sat_insn t insn with
+let match_events rule insn events events' =
+  match is_sat_insn rule insn with
   | false -> None
   | true -> 
     let left = Set.diff events events' in
     let right = Set.diff events' events in
-    match is_empty_left t, is_empty_right t with
+    match Rule.is_empty_left rule, Rule.is_empty_right rule with
     | true, true -> Some (Set.to_list events, Set.to_list events')
-    | true, _ -> match_right t right
-    | _, true -> match_left t left
-    | _ -> match_both t left right
-
-let match_events rule insn events events' =
-  match make_entry_opt rule with
-  | None -> None
-  | Some e -> match_events' e insn events events'
+    | true, _ -> match_right rule right
+    | _, true -> match_left rule left
+    | _ -> match_both rule left right
 
 let remove what from = 
   let not_exists e = not (List.exists what ~f:(fun e' -> e = e')) in
@@ -254,17 +155,16 @@ let remove what from =
 let remove_matched events events' (ms, ms') = 
   remove ms events, remove ms' events'
 
-let denied entries insn events events' =   
-  let entries = List.rev entries in
-  let rec loop acc entries (evs,evs') = match entries with
+let denied rules insn events events' =   
+  let rec loop acc rules (evs,evs') = match rules with
     | [] -> acc
-    | e :: es ->
-      match match_events' e insn evs evs' with
-      | None -> loop acc es (evs,evs')
+    | rule :: rls ->
+      match match_events rule insn evs evs' with
+      | None -> loop acc rls (evs,evs')
       | Some matched -> 
-        let acc' = match Rule.action e.rule with
-          | Rule.Skip -> acc
-          | Rule.Deny -> (e.rule, matched) :: acc in
+        let acc' = 
+          if Rule.action rule = Rule.skip then acc
+          else (rule, matched) :: acc in
         remove_matched evs evs' matched |> 
-        loop acc' es in
-  loop [] entries (events, events') 
+        loop acc' rls in
+  loop [] (List.rev rules) (events, events') 

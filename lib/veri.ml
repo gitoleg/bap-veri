@@ -13,7 +13,7 @@ type 'a r = 'a Bil.Result.r
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 type matched = Veri_policy.matched [@@deriving bin_io, compare, sexp]
-type rule = Veri_policy.rule [@@deriving bin_io, compare, sexp]
+type rule = Veri_rule.t [@@deriving bin_io, compare, sexp]
 
 let create_move_event tag cell' data' =  
   Value.create tag Move.({cell = cell'; data = data';})
@@ -81,7 +81,7 @@ module Report = struct
 
       let pp_data fmt (rule, matched) =
         let open Veri_policy in
-        Format.fprintf fmt "%a\n%a" Rule.pp rule Matched.pp matched
+        Format.fprintf fmt "%a\n%a" Veri_rule.pp rule Matched.pp matched
 
       let pp fmt t =
         Format.fprintf fmt "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."

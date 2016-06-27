@@ -14,13 +14,21 @@ let () =
     Printf.eprintf "failed to load plugin from %s: %s" 
       path (Error.to_string_hum er)
 
-let read_rules file = 
-  let rules = Rules_reader.read file in
+let read_rules fname = 
+  let comments = "//" in
+  let is_interesting s = 
+    s <> "" && not (String.is_prefix ~prefix:comments s) in
+  let inc = In_channel.create fname in
+  let strs = In_channel.input_lines inc in
+  In_channel.close inc;
+  List.map ~f:String.strip strs 
+  |> List.filter ~f:is_interesting 
+  |> List.map ~f:Veri_rule.of_string_err |>
   List.filter_map ~f:(function 
       | Ok r -> Some r
       | Error er -> 
         Format.(fprintf err_formatter "%s\n" (Error.to_string_hum er));
-        None) rules
+        None)
 
 let string_of_error = function
   | `Protocol_error er -> 

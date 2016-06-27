@@ -57,10 +57,9 @@ let is_equal_events evs evs' =
 
 let test_policy =
   let open Veri_policy in
-  let rules = [
-    Rule.create ~insn:" *" ~left:" *" Rule.deny;
-  ] in 
-  List.fold ~init:empty ~f:add rules
+  let rule = ok_exn (Veri_rule.create
+      ~insn:" *" ~left:" *" Veri_rule.deny) in
+  List.fold ~init:empty ~f:add (rule :: [])
 
 let eval_trace trace =
   Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
@@ -135,11 +134,11 @@ let test_mem_load ctxt =
 
 let test_backref_match ctxt = 
   let open Veri_policy in
-  let rule = 
-    Rule.create 
+  let rule = ok_exn
+    (Veri_rule.create 
       ~insn:" *" 
       ~left:"(.*) => 0x282:32" 
-      ~right:"(\\1) => (.*)" Rule.skip in
+      ~right:"(\\1) => (.*)" Veri_rule.skip) in
   let e0 = make_event register_read (make_reg "EFLAGS" 0x282) in
   let e0' = make_event register_read (make_reg "EFLAGS" 0x283) in
   let e1 = make_event memory_load (make_mem 0xF6FFEDDC 0xF67E17CE) in
