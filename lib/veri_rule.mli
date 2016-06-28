@@ -13,12 +13,17 @@ include Regular with type t := t
     if all of fields {insn, left, right} either contains 
     correct regular expression, either plain string, either
     are an empty strings. If some field is not given, it's 
-    that an empty string fits well for this field. *)
-val create:
+    assumed that an empty string fits well for this field. *)
+val create :
   ?insn:string -> ?left:string -> ?right:string -> action -> t Or_error.t
 
-(** [of_string_err str] - return a rule, if string contains exactly 4 string
-    representation of fields:
+exception Bad_field of string
+
+(** [create_exn ~insn ~left ~right action] - the same as above, but raises
+    Bad_field exception if fields contains errors *)
+val create_exn : ?insn:string -> ?left:string -> ?right:string -> action -> t
+
+(** [of_string_err str] - return a rule, if string contains exactly 4 fields:
     - action (with only two possible values: SKIP | DENY)
     - instruction name or correct regular expression
     - one of the following:

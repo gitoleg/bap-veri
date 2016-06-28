@@ -27,7 +27,7 @@ let read_rules fname =
   List.filter_map ~f:(function 
       | Ok r -> Some r
       | Error er -> 
-        Format.(fprintf err_formatter "%s\n" (Error.to_string_hum er));
+        Format.(fprintf std_formatter "%s\n" (Error.to_string_hum er));
         None)
 
 let string_of_error = function
@@ -49,11 +49,16 @@ let eval file f =
     | Some arch -> f arch trace
     | None -> Printf.eprintf "trace of unknown arch\n"
 
+let default_policy = 
+  let open Veri_rule in  
+  let p = Veri_policy.(add empty (create_exn ~insn:".*" ~left:".*" deny)) in
+  Veri_policy.add p (create_exn ~insn:".*" ~right:".*" deny)
+
 let make_policy = function
-  | None -> Veri_policy.empty
+  | None -> default_policy
   | Some file -> 
     read_rules file |>
-    List.fold ~f:Veri_policy.add ~init:Veri_policy.empty 
+    List.fold ~f:Veri_policy.add ~init:Veri_policy.empty
 
 let pp_result fmt report  = 
   Format.fprintf fmt "%a" Veri.Report.pp report;

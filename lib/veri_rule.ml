@@ -2,31 +2,30 @@ open Core_kernel.Std
 open Bap.Std
 open Regular.Std
 
-type trial = Pcre.regexp
-type action = Skip | Deny [@@deriving bin_io, compare, sexp] 
-type field = trial * string
+let er s = Error (Error.of_string s) 
 
-type t = {
-  action : action;
-  insn   : field;
-  both   : field;
-  left   : field;
-  right  : field;
-} [@@deriving fields]
+module Action = struct
+  type t = Skip | Deny [@@deriving bin_io, compare, sexp]
+  let skip = Skip
+  let deny = Deny
+
+  let to_string = function
+    | Skip -> "SKIP"
+    | Deny -> "DENY"
+
+  let of_string_err = function 
+    | "SKIP" -> Ok Skip
+    | "DENY" -> Ok Deny
+    | s -> er (Printf.sprintf "only SKIP | DENY actions should be used: %s" s)
+end
+
+type trial = Pcre.regexp
 
 let empty = ""
-let skip = Skip
-let deny = Deny
-let action t = t.action
-
-let string_of_action = function
-  | Skip -> "Skip"
-  | Deny -> "Deny"
-
 let trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
 
 module Field = struct
-  type t = field
+  type t = trial * string
 
   let create_exn s = trial_exn s, s
 
@@ -40,10 +39,25 @@ module Field = struct
   let is_empty f = snd f = empty
 end
 
+type action = Action.t [@@deriving bin_io, compare, sexp] 
+type field = Field.t
+
+type t = {
+  action : action;
+  insn   : field;
+  both   : field;
+  left   : field;
+  right  : field;
+} [@@deriving fields]
+
+exception Bad_field of string
+
+let skip = Action.skip
+let deny = Action.deny
 let is_empty = Field.is_empty
 
 let contains_backreference = 
-  let rex = Pcre.regexp "\\[0-9]" in
+  let rex = Pcre.regexp "\\\\[1-9]" in
   fun s -> Pcre.pmatch ~rex s
 
 let contains_space s = String.exists ~f:(fun c -> c = ' ') s
@@ -62,6 +76,11 @@ let create ?insn ?left ?right action =
   Field.create_err (of_opt left) >>= fun left ->
   make_right_part (of_opt right) >>= fun right ->    
   Ok ({action; insn; both; left; right;})
+
+let create_exn ?insn ?left ?right action = 
+  match create ?insn ?left ?right action with 
+  | Ok r -> r
+  | Error s -> raise (Bad_field (Error.to_string_hum s))
 
 module Match = struct
 
@@ -84,13 +103,12 @@ module S = struct
       if Field.is_empty f then "''"
       else if contains_space (snd f) then Printf.sprintf "'%s'" (snd f)
       else snd f in
-    Printf.sprintf "%s %s %s %s" (string_of_action t.action) 
+    Printf.sprintf "%s %s %s %s" (Action.to_string t.action) 
       (of_field t.insn) (of_field t.left) (of_field t.right)
 
   let rex = Pcre.regexp "'.*?'|\".*?\"|\\S+"
   let is_quote c = c = '\"' || c = '\''
   let unquote s = String.strip ~drop:is_quote s
-  let er s = Error (Error.of_string s) 
 
   (** Not_found could be raised here  *)
   let fields_exn str = 
@@ -113,22 +131,17 @@ module S = struct
     | None -> 
       er (Printf.sprintf "String %s doesn't match to rule grammar" str)
 
-  let action_err = function 
-    | "SKIP" -> Ok Skip
-    | "DENY" -> Ok Deny
-    | s -> er (Printf.sprintf "only SKIP | DENY actions should be used: %s" s)
-
-  let make_rule s = 
+  let of_string_err s = 
     let open Or_error in
     fields_err s >>= fun (action, insn, left, right) ->
-    action_err action >>= fun action' ->
+    Action.of_string_err action >>= fun action' ->
     create ~insn ~left ~right action'
 
-  let of_string str = ok_exn (make_rule str)
+  let of_string str = ok_exn (of_string_err str)
 
 end
 
-let of_string_err = S.make_rule
+let of_string_err = S.of_string_err
 
 include Sexpable.Of_stringable(S)
 include Binable.Of_stringable(S)
