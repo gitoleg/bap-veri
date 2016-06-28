@@ -40,7 +40,7 @@ let string_of_error = function
   | `Ambiguous_uri -> "ambiguous uri"
 
 let eval file f = 
-  let uri = Uri.of_string ("file://" ^ file) in  
+  let uri = Uri.of_string ("file:" ^ file) in
   match Trace.load uri with
   | Error er -> 
     Printf.eprintf "error during loading trace: %s\n" (string_of_error er)
@@ -68,16 +68,6 @@ let errors_stream s =
   ignore(Stream.subscribe s (pp_result Format.std_formatter))
 
 let ignore_pc_update ev = not (Value.is Event.pc_update ev)
-
-module type S = module type of List
-
-let print_flags fl =  
-  let mem lst = List.mem lst in
-  match fl with 
-  | None -> false, false
-  | Some lst ->
-    if mem lst `all then true, true 
-    else mem lst `errors, mem lst `stat
 
 let run rules file show_errs show_stat = 
   let f arch trace = 
