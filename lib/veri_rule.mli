@@ -1,7 +1,6 @@
 (** rule = ACTION : INSN : EVENT : EVENT  *)
 
 open Core_kernel.Std
-open Bap.Std
 open Regular.Std
 
 type t [@@deriving bin_io, compare, sexp]
@@ -42,10 +41,5 @@ val right  : t -> field
 
 val is_empty : field -> bool
 
-module Match : sig
-  type m = t -> string -> bool
-  val insn  : m
-  val both  : m
-  val left  : m
-  val right : m
-end
+(** [match_field t field str] - match a given string with a field. *)
+val match_field: t -> [`Insn | `Left | `Right | `Both] -> string -> bool

@@ -99,7 +99,7 @@ class context policy trace = object(self:'s)
   val events = Events.empty
   val other  = None
   val stream = Stream.create ()
-  val descr : string option = None
+  val insn : string option = None
   val error : error option = None
   val bil   : bil = []
   val code  : Chunk.t option = None
@@ -112,7 +112,7 @@ class context policy trace = object(self:'s)
     Report.Fields.create ~bil ~data
       ~right:(self#events |> Set.to_list)
       ~left:(Option.(value_exn self#other)#events |> Set.to_list)
-      ~insn:(Option.value_exn descr)
+      ~insn:(Option.value_exn insn)
       ~code:(Option.value_exn code |> Chunk.data)
 
   method merge: 's =
@@ -120,7 +120,7 @@ class context policy trace = object(self:'s)
       match error with 
       | Some er -> Veri_stat.notify stat er
       | None ->
-        match descr with
+        match insn with
         | None -> stat
         | Some name ->
           let events = Option.(value_exn self#other)#events in
@@ -131,14 +131,14 @@ class context policy trace = object(self:'s)
             let report = self#make_report results in
             Signal.send (snd stream) report;
             Veri_stat.failbil stat name  in
-    {<other = None; error = None; descr = None; bil = [];
+    {<other = None; error = None; insn = None; bil = [];
       events = Events.empty; stat = stat; code = None >}
 
   method stat = stat  
   method events: Events.t = events
-  method split = {<other = Some self; events = Events.empty; >}
+  method split = {< other = Some self; events = Events.empty; >}
   method other = other
-  method set_description s = {<descr = Some s >}
+  method set_insn s = {< insn = Some s >}
   method register_event ev = {< events = Set.add events ev; >}
 
   method discard_event: (event -> bool) -> 's = fun f ->
@@ -146,7 +146,7 @@ class context policy trace = object(self:'s)
     | None -> self
     | Some ev -> {< events = Set.remove events ev >}
 
-  method notify_error er = {<error = Some er >}
+  method notify_error er = {< error = Some er >}
   method set_bil bil = {< bil = bil >}
   method reports : Report.t stream = fst stream
 end
@@ -300,7 +300,7 @@ class ['a] t arch dis is_interesting =
 
     method private eval_insn (mem, insn) = 
       let name = Disasm.insn_name insn in
-      SM.update (fun c -> c#set_description name) >>= fun () ->
+      SM.update (fun c -> c#set_insn name) >>= fun () ->
       match lift mem insn with
       | Error er ->
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))

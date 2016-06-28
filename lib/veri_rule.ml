@@ -1,7 +1,10 @@
 open Core_kernel.Std
-open Bap.Std
 open Regular.Std
 
+type trial = Pcre.regexp
+
+let empty = ""
+let trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
 let er s = Error (Error.of_string s) 
 
 module Action = struct
@@ -18,11 +21,6 @@ module Action = struct
     | "DENY" -> Ok Deny
     | s -> er (Printf.sprintf "only SKIP | DENY actions should be used: %s" s)
 end
-
-type trial = Pcre.regexp
-
-let empty = ""
-let trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
 
 module Field = struct
   type t = trial * string
@@ -62,7 +60,7 @@ let contains_backreference =
 
 let contains_space s = String.exists ~f:(fun c -> c = ' ') s
 
-let make_right_part s = 
+let right_field s = 
   if contains_backreference s then
     Ok (trial_exn empty, s)
   else Field.create_err s
@@ -74,7 +72,7 @@ let create ?insn ?left ?right action =
   Field.create_err (of_opt insn) >>= fun insn ->
   Field.create_err both >>= fun both ->
   Field.create_err (of_opt left) >>= fun left ->
-  make_right_part (of_opt right) >>= fun right ->    
+  right_field (of_opt right) >>= fun right ->    
   Ok ({action; insn; both; left; right;})
 
 let create_exn ?insn ?left ?right action = 
@@ -82,18 +80,14 @@ let create_exn ?insn ?left ?right action =
   | Ok r -> r
   | Error s -> raise (Bad_field (Error.to_string_hum s))
 
-module Match = struct
-
-  type m = t -> string -> bool
-
-  let match_field field s = Pcre.pmatch ~rex:(fst field) s
-  let insn t  = match_field t.insn
-  let both t  = match_field t.both
-  let left t  = match_field t.left
-  let right t = match_field t.right
-
-end
-
+let match_field t field s = 
+  let field' = match field with
+    | `Insn -> t.insn
+    | `Both -> t.both
+    | `Left -> t.left
+    | `Right -> t.right in
+  Pcre.pmatch ~rex:(fst field') s
+  
 module S = struct
 
   type nonrec t = t

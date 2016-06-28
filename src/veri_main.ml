@@ -27,7 +27,7 @@ let read_rules fname =
   List.filter_map ~f:(function 
       | Ok r -> Some r
       | Error er -> 
-        Format.(fprintf std_formatter "%s\n" (Error.to_string_hum er));
+        Format.(fprintf err_formatter "%s\n" (Error.to_string_hum er));
         None)
 
 let string_of_error = function
@@ -64,12 +64,22 @@ let pp_result fmt report  =
   Format.fprintf fmt "%a" Veri.Report.pp report;
   Format.print_flush ()
   
-let verbose_stream s = 
+let errors_stream s = 
   ignore(Stream.subscribe s (pp_result Format.std_formatter))
 
 let ignore_pc_update ev = not (Value.is Event.pc_update ev)
 
-let run rules file verbose = 
+module type S = module type of List
+
+let print_flags fl =  
+  let mem lst = List.mem lst in
+  match fl with 
+  | None -> false, false
+  | Some lst ->
+    if mem lst `all then true, true 
+    else mem lst `errors, mem lst `stat
+
+let run rules file show_errs show_stat = 
   let f arch trace = 
     let stat = 
       Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
@@ -77,16 +87,17 @@ let run rules file verbose =
           let policy = make_policy rules in
           let ctxt = new Veri.context policy trace in
           let veri = new Veri.t arch dis ignore_pc_update in
-          if verbose then verbose_stream ctxt#reports;
+          if show_errs then errors_stream ctxt#reports;
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
           Ok ctxt'#stat) in
     match stat with
     | Error er -> 
-      let inf = Error.to_string_hum er in
-      Printf.eprintf "error in verification: %s" inf
+      Error.to_string_hum er |>
+      Printf.eprintf "error in verification: %s" 
     | Ok stat ->
-      Veri_stat.pp Format.std_formatter stat in
+      if show_stat then
+        Veri_stat.pp Format.std_formatter stat in
   eval file f
 
 module Command = struct
@@ -101,10 +112,14 @@ module Command = struct
     let doc = "File with policy description" in
     Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
 
-  let verbose = 
-    let doc = "Print verbose output" in
-    Arg.(value & flag & info ["verbose"] ~doc)
-
+  let show_errors = 
+    let doc = "Show bil errors" in
+    Arg.(value & flag & info ["show-errors"] ~doc)
+      
+  let show_stat = 
+    let doc = "Show verification statistic" in
+    Arg.(value & flag & info ["show-stat"] ~doc)
+     
   let info =
     let doc = "Bil verification tool" in
     let man = [
@@ -114,7 +129,7 @@ module Command = struct
     ] in
     Term.info "veri" ~doc ~man
 
-  let run_t = Term.(const run $ rules $ filename $ verbose)
+  let run_t = Term.(const run $ rules $ filename $ show_errors $ show_stat)
 
   let run () = match Term.eval (run_t, info) with `Error _ -> exit 1 | _ -> exit 0
 

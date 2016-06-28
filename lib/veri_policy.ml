@@ -8,7 +8,7 @@ module Rule = Veri_rule
 
 type event = Trace.event [@@deriving bin_io, compare, sexp]
 type events = Value.Set.t
-type rule = Rule.t
+type rule = Rule.t [@@deriving bin_io, compare, sexp]
 
 module Matched = struct
   type t = event list * event list [@@deriving bin_io, sexp]
@@ -36,7 +36,7 @@ module Matched = struct
 end
 
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
-type t = rule list
+type t = rule list [@@deriving bin_io, compare, sexp]
  
 let empty = []
 let add t rule : t = rule :: t
@@ -46,7 +46,7 @@ let string_of_events ev ev' =
   
 let sat_events r ev ev' =
   Value.typeid ev = Value.typeid ev' &&
-  Rule.Match.both r (string_of_events ev ev')
+  Rule.match_field r `Both (string_of_events ev ev')
 
 module G = struct
   type t = rule * event array * event array
@@ -110,12 +110,12 @@ let single_match fmatch events =
   List.filter ~f (Set.to_list events)
 
 let match_right rule events = 
-  match single_match (Rule.Match.right rule) events with 
+  match single_match (Rule.match_field rule `Right) events with 
   | [] -> None
   | ms -> Some ([], ms)  
 
 let match_left rule events = 
-  match single_match (Rule.Match.left rule) events with 
+  match single_match (Rule.match_field rule `Left) events with 
   | [] -> None
   | ms -> Some (ms,[])  
 
@@ -132,8 +132,8 @@ let match_both rule left right =
   | [], [] -> None
   | ms -> Some ms
 
-let is_sat_insn rule insn = 
-  not (Rule.(is_empty (insn rule))) && Rule.Match.insn rule insn
+let is_sat_insn rule name = 
+  not (Rule.(is_empty (insn rule))) && Rule.match_field rule `Insn name
 
 let match_events rule insn events events' =
   match is_sat_insn rule insn with

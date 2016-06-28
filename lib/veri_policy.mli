@@ -13,7 +13,7 @@ module Matched : sig
 end
 
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
-type t 
+type t [@@deriving bin_io, compare, sexp]
 
 val empty : t
 val add : t -> rule -> t
