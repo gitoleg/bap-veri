@@ -15,7 +15,7 @@ let () =
       path (Error.to_string_hum er)
 
 let read_rules fname = 
-  let comments = "//" in
+  let comments = "#" in
   let is_interesting s = 
     s <> "" && not (String.is_prefix ~prefix:comments s) in
   let inc = In_channel.create fname in
@@ -27,7 +27,7 @@ let read_rules fname =
   List.filter_map ~f:(function 
       | Ok r -> Some r
       | Error er -> 
-        Format.(fprintf err_formatter "%s\n" (Error.to_string_hum er));
+        Format.(fprintf std_formatter "%s\n" (Error.to_string_hum er));
         None)
 
 let string_of_error = function
