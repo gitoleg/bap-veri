@@ -103,11 +103,11 @@ module Command = struct
     Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
 
   let show_errors = 
-    let doc = "Show bil errors" in
+    let doc = "Show detailed information about BIL errors." in
     Arg.(value & flag & info ["show-errors"] ~doc)
       
   let show_stat = 
-    let doc = "Show verification statistic" in
+    let doc = "Show summary over verification" in
     Arg.(value & flag & info ["show-stat"] ~doc)
      
   let info =

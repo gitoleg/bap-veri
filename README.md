@@ -1,13 +1,11 @@
 # bil-verification
 
-This tool compares the results of the execution in the trace with the
-execution of our lifted IL. A central goal is to use this feature to
-find errors in our lifting instructions, which happen when the
-execution of the IL does not match that of the concrete instruction
-trace. Verification is based on comparison of two set of events -
-first one is a real events set, that came from trace. And second one 
-is a set, that was filled during execution of `code_exec` event, by
-emitting artificial events. 
+A central goal of this tool is to find errors in our BIL code. So this tool 
+compares results of instructions execution in trace with execution of BIL code,
+that describes this instructions. Verification is based on comparison of two 
+set of events. First one is a real events set, that came from trace. And second 
+one is a set, that was filled during execution of `code_exec` event, by 
+emitting artificial events.
 
 ##Policy
 
@@ -15,40 +13,71 @@ There is an ideal case when all events from trace and all events from
 BIL are equal to each other. But in practice both trace and bil could
 contain some special cases. For example, trace could be obtained from
 source, that does not provide some cpu flags, or bil does not support
-some instructions. And we possible may want to shadow this cases and
+some instructions.  And we possible may want to shadow this cases and
 continue verification process. From other point of view, we do not want 
 to miss errors. So for this reasons tool supports policy, that is a set
 of rules with the following grammar.
 
-Each rule consists of 4 fields, separated by `&` : 
-`ACTION & INSN & EVENT & EVENT`
-Action could be either `SKIP`, either `DENY`. If we processed all rules 
-without matching with DENY, then everything is ok. Matching is performed 
-textually, based on event syntax. Regexp syntax supports back references 
-in event fields.
+Each rule consists of 4 fields: `ACTION INSN L_EVENT R_EVENT`
+
+`ACTION`  field could be either `SKIP`, either `DENY`. If we have processed 
+          trace without matching with any `DENY`, then everything is ok.
+`INSN`    field could contain an instruction name like `MOV64rr` or regular 
+          expression, like `MOV.*`
+`L_EVENT` field, left hand-side event, corresponds to textual representation 
+          of tracer events, and could contain any string and regualar 
+          expression. 
+`R_EVENT` field, right hand-side event, corresponds to textual representation
+          of lifter events, and could contain any string and regualar 
+          expression. 
+
+Matching is performed textually, based on event syntax. Regexp syntax supports
+backreferences in event fields. Only that events, that don't have an equal
+pair in other set goes to this matching. 
+
+Rules could be written in text file, that will be passed as argument through
+command line. Syntax is a pretty simple. Each row is either contains a rule,
+either commented with `#` symbol, either empty. Rule must have exactly 
+4 fields. An empty field must be written as `''` or `""`. Fields with spaces 
+must be written in quotes: `"RAX => .*"`, single quotes also supported:
+`'RAX => .*'`.
+
+###Examles
 
 For example, let's imagine that a tracer doesn't support read from zero 
 flag, so all read events from zero flag in bil code will be unmatched. 
 So we are able to create next rule :
-`SKIP& (.*) &  & ZF -> (.*)`
+`SKIP .* '' 'ZF -> .*'`
 This could be read as: for any instruction skip unmatched zero flag 
 reading in bil code.
+
 Next two rules means that that no one should be left without a pair.
 ```
-DENY & (.*) & (.*) & 
-DENY & (.*) &  &  (.*)
+DENY .* .* ''
+DENY .* '' .*
 ```
-That does mean that for any instruction unmatched left/right event
-is an error.
+That does mean that for any instruction unmatched left/right event is an error. 
+This pair is also a default behavior in case when there wasn't any policy file 
+given through a command line.
 
 Also we can use this policy to check incomplete lifter, for example we can say:
 ```
-DENY: MOV(.*) : (.*) : 
-DENY: MOV(.*) :   :  (.*)
+DENY MOV.* .* ''
+DENY MOV.* '' .*
 ```
 And check only move instructions.
 
+Backreferenses example: `DENY .* '(.F) <= .*' '\1 <= .*'`, that could be read 
+as: for any instruction complain if a value written in some flag in tracer is 
+differrent from value written in lifter for the same flag. And values are 
+really different, since only not equal events goes to matching.
+      
 ##Usage
 ```
-./veri_main.native --verbose --rules "path to rules file" "path to trace file"
+./veri_main.native --show-errors --show-stat --rules "path to rules file" "path to trace file"
+
+The only one required argument is a trace file with `.frames` extension.
+`show-errors` option allows to see a detailed information about BIL errors
+`show-stat` option allows to see a summary over a trace verification.
+
 ```
