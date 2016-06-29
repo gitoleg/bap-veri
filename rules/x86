@@ -18,19 +18,22 @@ SKIP SAR.* '' ''
 
 # XOR is suspected to be broken, because in case of same operands,
 # e.g. RAX and RAX, it reads nothing, just write zero to destination
-SKIP XOR.* '.* => .*' ''
-
-# the following insn contains a conditional branch. As a result, 
-# in tracer, if a condition is not satisfied then the same value 
-# is written (the same as was read).
-//SKIP CMPXCHG.* '.* <= .*' ''
+#SKIP XOR.* '.* => .*' ''
 
 # CMOV in our lifter works a bit unstrict. It reads and writes the same value
 # if condition wasn't succeded.
-SKIP CMOV.* '' ''
+SKIP CMOV.* '' '.*'
 
 # There are a wrong flags reads in our lifter. 
 SKIP SH(L|R).* '' '.F => .*'
+
+# insn contains a conditional branch. As a result, in tracer, 
+# if a condition is not satisfied then the same value 
+# is written (the same as was read).
+SKIP CMPXCHG.* '.* <= .*' ''
+
+# LEAVE insn has additional read from RSP in out lifter 
+SKIP LEAVE.* '' 'RSP => .*'
 
 # Our flags reads(writes) should be subset of tracer 
 # reads(writes). But writes should be with same value
@@ -40,4 +43,4 @@ SKIP .* '.F <= .*' ''
 
 # Last rules means that every event should has a pair
 DENY .* '.*' ''
-DENY .* '' '.*' 
+DENY .* '' '.*'
