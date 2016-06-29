@@ -20,23 +20,21 @@ of rules with the following grammar.
 
 Each rule consists of 4 fields: `ACTION INSN L_EVENT R_EVENT`
 
-`ACTION`  field could be either `SKIP`, either `DENY`. If we have processed 
-          trace without matching with any `DENY`, then everything is ok.
-`INSN`    field could contain an instruction name like `MOV64rr` or regular 
-          expression, like `MOV.*`
-`L_EVENT` field, left hand-side event, corresponds to textual representation 
-          of tracer events, and could contain any string and regualar 
-          expression. 
-`R_EVENT` field, right hand-side event, corresponds to textual representation
-          of lifter events, and could contain any string and regualar 
-          expression. 
+1. `ACTION`  field could be either `SKIP`, either `DENY`. If we have processed 
+   trace without matching with any `DENY`, then everything is ok.
+2. `INSN`    field could contain an instruction name like `MOV64rr` or regular 
+   expression, like `MOV.*`
+3. `L_EVENT` field, left hand-side event, corresponds to textual representation 
+   of tracer events, and could contain any string and regualar expression. 
+4. `R_EVENT` field, right hand-side event, corresponds to textual representation
+   of lifter events, and could contain any string and regualar expression. 
 
 Matching is performed textually, based on event syntax. Regexp syntax supports
 backreferences in event fields. Only that events, that don't have an equal
 pair in other set goes to this matching. 
 
 Rules could be written in text file, that will be passed as argument through
-command line. Syntax is a pretty simple. Each row is either contains a rule,
+command line. Syntax is a pretty simple. Each row either contains a rule,
 either commented with `#` symbol, either empty. Rule must have exactly 
 4 fields. An empty field must be written as `''` or `""`. Fields with spaces 
 must be written in quotes: `"RAX => .*"`, single quotes also supported:
