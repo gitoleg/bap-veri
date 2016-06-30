@@ -99,56 +99,62 @@ class context policy trace = object(self:'s)
   val events = Events.empty
   val other  = None
   val stream = Stream.create ()
-  val insn : string option = None
+  val insn  : string option = None
   val error : error option = None
   val bil   : bil = []
   val code  : Chunk.t option = None
   val stat  : Veri_stat.t = Veri_stat.create ()
+  val next_pc : Trace.event option = None
+
+  method with_next_pc ev = {< next_pc = Some ev >}
+  method next_pc = next_pc
 
   method set_code c = {< code = Some c >}
   method code = code
 
   method private make_report data =
     Report.Fields.create ~bil ~data
-      ~right:(self#events |> Set.to_list)
-      ~left:(Option.(value_exn self#other)#events |> Set.to_list)
+      ~right:(Set.to_list self#events)
+      ~left:(Set.to_list (Option.value_exn other)#events)
       ~insn:(Option.value_exn insn)
       ~code:(Option.value_exn code |> Chunk.data)
 
-  method merge: 's =
-    let stat =
-      match error with 
-      | Some er -> Veri_stat.notify stat er
-      | None ->
-        match insn with
-        | None -> stat
-        | Some name ->
-          let events = Option.(value_exn self#other)#events in
-          let events' = self#events in
-          match Veri_policy.denied policy name events events' with
-          | [] -> Veri_stat.success stat name
-          | results ->
-            let report = self#make_report results in
-            Signal.send (snd stream) report;
-            Veri_stat.failbil stat name  in
-    {<other = None; error = None; insn = None; bil = [];
-      events = Events.empty; stat = stat; code = None >}
+  method private finish_step stat =     
+    {< other = None; error = None; insn = None; bil = [];
+       events = Events.empty; stat = stat; code = None; next_pc = None >}
 
-  method stat = stat  
-  method events: Events.t = events
-  method split = {< other = Some self; events = Events.empty; >}
-  method other = other
-  method set_insn s = {< insn = Some s >}
-  method register_event ev = {< events = Set.add events ev; >}
+  method merge : 's = 
+    match error with 
+    | Some er -> self#finish_step (Veri_stat.notify stat er)
+    | None ->  match insn with
+      | None -> self#finish_step stat
+      | Some name ->
+        let other = Option.value_exn self#other in
+        let events, events' = other#events, self#events in
+        match Veri_policy.denied policy name events events' with
+        | [] -> self#finish_step (Veri_stat.success stat name)
+        | results ->
+          let report = self#make_report results in
+          Signal.send (snd stream) report;
+          self#finish_step (Veri_stat.failbil stat name)  
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
     | None -> self
     | Some ev -> {< events = Set.remove events ev >}
-
+                 
+  method stat = stat  
+  method events: Events.t = events
+  method split = {< other = Some self; events = Events.empty; next_pc = None >}
+  method other = other
+  method set_insn s = {< insn = Some s >}
+  method register_event ev = {< events = Set.add events ev; >}
   method notify_error er = {< error = Some er >}
   method set_bil bil = {< bil = bil >}
   method reports : Report.t stream = fst stream
+  method save someone = {< other = Some someone >}
+  method switch = (Option.value_exn other)#save self
+
 end
 
 let target_info arch = 
@@ -310,6 +316,7 @@ class ['a] t arch dis is_interesting =
 
     method private eval_chunk chunk =
       SM.update (fun c -> c#set_code chunk) >>= fun () -> 
+      self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
       match memory_of_chunk endian chunk with
       | Error er -> SM.update (fun c -> c#notify_error (`Damaged_chunk er))
       | Ok mem -> 
@@ -317,34 +324,46 @@ class ['a] t arch dis is_interesting =
         | Error er -> SM.update (fun c -> c#notify_error er)
         | Ok insn -> self#eval_insn insn
 
-    method! eval_event ev = 
-      let is_after_code () = 
-        SM.get () >>= fun c -> 
-        c#code <> None |> SM.return in
-      match Value.get Event.code_exec ev with
-      | Some code -> 
-        self#verify_frame >>= fun () -> 
-        SM.update (fun c -> c#set_code code)
-      | None ->
-        is_after_code () >>= fun r ->
-        if r then self#update_event ev
-        else SM.return ()
+    method! eval_jmp exp =
+      self#eval_exp exp >>= fun r ->
+      match value r with
+      | Bil.Imm addr ->
+        let pc = Value.create Event.pc_update addr in
+        SM.update (fun c -> c#with_next_pc pc)
+      | Bil.Mem _ | Bil.Bot -> SM.return ()
 
-    method private eval_events evs = 
-      List.fold ~init:(SM.return ())
-        ~f:(fun sm ev -> sm >>= fun () -> 
-             super#eval_event ev >>= fun () ->
-             self#update_event ev) evs
+    method! eval_event ev =
+      if Value.is Event.pc_update ev then
+        SM.update (fun c -> c#with_next_pc ev) >>= fun () ->
+        self#verify_frame >>= fun () ->
+        self#update_event ev
+      else if Value.is Event.code_exec ev then
+        SM.update (fun c -> c#set_code (Value.get_exn Event.code_exec ev))
+      else self#update_event ev 
+
+    method private add_pc_update : 'a u = 
+      SM.get () >>= fun ctxt ->
+      match ctxt#next_pc with 
+      | None -> SM.return ()
+      | Some ev -> 
+        self#update_event ev >>= fun () ->
+        SM.update (fun c -> c#switch) >>= fun () ->
+        SM.get () >>= fun ctxt' ->
+        match ctxt'#next_pc with
+        | None -> SM.update (fun c -> c#switch) 
+        | Some ev ->           
+          self#update_event ev >>= fun () ->
+          SM.update (fun c -> c#switch) 
 
     method private verify_frame : 'a u =
       SM.get () >>= fun ctxt -> 
-      let code, side = ctxt#code, Set.to_list ctxt#events in
-      match code with
+      match ctxt#code with
+      | None -> SM.return ()  
       | Some code -> 
         SM.update (fun c -> c#split) >>= fun () ->
-        self#eval_chunk code       >>= fun () ->
+        self#eval_chunk code      >>= fun () ->
+        self#add_pc_update        >>= fun () ->
         SM.update (fun c -> c#merge)
-      | None -> SM.return ()
 
     method! eval_trace trace =
       super#eval_trace trace >>= fun () -> self#verify_frame

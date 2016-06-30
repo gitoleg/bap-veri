@@ -58,8 +58,6 @@ let contains_backreference =
   let rex = Pcre.regexp "\\\\[1-9]" in
   fun s -> Pcre.pmatch ~rex s
 
-let contains_space s = String.exists ~f:(fun c -> c = ' ') s
-
 let right_field s = 
   if contains_backreference s then
     Ok (trial_exn empty, s)
@@ -93,6 +91,7 @@ module S = struct
   type nonrec t = t
 
   let to_string t = 
+    let contains_space s = String.exists ~f:(fun c -> c = ' ') s in
     let of_field f = 
       if Field.is_empty f then "''"
       else if contains_space (snd f) then Printf.sprintf "'%s'" (snd f)

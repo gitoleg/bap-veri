@@ -69,6 +69,9 @@ let errors_stream s =
 
 let ignore_pc_update ev = not (Value.is Event.pc_update ev)
 
+let is_interesting ev = 
+  not (Value.is Event.context_switch ev)
+
 let run rules file show_errs show_stat = 
   let f arch trace = 
     let stat = 
@@ -76,7 +79,9 @@ let run rules file show_errs show_stat =
           let dis = Dis.store_asm dis |> Dis.store_kinds in          
           let policy = make_policy rules in
           let ctxt = new Veri.context policy trace in
-          let veri = new Veri.t arch dis ignore_pc_update in
+          (* let veri = new Veri.t arch dis (fun e -> true) in *)
+          (* let veri = new Veri.t arch dis ignore_pc_update in *)
+          let veri = new Veri.t arch dis is_interesting in
           if show_errs then errors_stream ctxt#reports;
           let ctxt' = 
             Monad.State.exec (veri#eval_trace trace) ctxt in
