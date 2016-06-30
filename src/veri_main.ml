@@ -16,13 +16,13 @@ let () =
 
 let read_rules fname = 
   let comments = "#" in
-  let is_interesting s = 
+  let is_sensible s = 
     s <> "" && not (String.is_prefix ~prefix:comments s) in
   let inc = In_channel.create fname in
   let strs = In_channel.input_lines inc in
   In_channel.close inc;
   List.map ~f:String.strip strs 
-  |> List.filter ~f:is_interesting 
+  |> List.filter ~f:is_sensible
   |> List.map ~f:Veri_rule.of_string_err |>
   List.filter_map ~f:(function 
       | Ok r -> Some r
@@ -63,14 +63,11 @@ let make_policy = function
 let pp_result fmt report  = 
   Format.fprintf fmt "%a" Veri.Report.pp report;
   Format.print_flush ()
-  
+
 let errors_stream s = 
   ignore(Stream.subscribe s (pp_result Format.std_formatter))
 
-let ignore_pc_update ev = not (Value.is Event.pc_update ev)
-
-let is_interesting ev = 
-  not (Value.is Event.context_switch ev)
+let is_interesting ev = not (Value.is Event.context_switch ev)
 
 let run rules file show_errs show_stat = 
   let f arch trace = 
@@ -79,12 +76,9 @@ let run rules file show_errs show_stat =
           let dis = Dis.store_asm dis |> Dis.store_kinds in          
           let policy = make_policy rules in
           let ctxt = new Veri.context policy trace in
-          (* let veri = new Veri.t arch dis (fun e -> true) in *)
-          (* let veri = new Veri.t arch dis ignore_pc_update in *)
           let veri = new Veri.t arch dis is_interesting in
           if show_errs then errors_stream ctxt#reports;
-          let ctxt' = 
-            Monad.State.exec (veri#eval_trace trace) ctxt in
+          let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
           Ok ctxt'#stat) in
     match stat with
     | Error er -> 

@@ -104,13 +104,6 @@ class context policy trace = object(self:'s)
   val bil   : bil = []
   val code  : Chunk.t option = None
   val stat  : Veri_stat.t = Veri_stat.create ()
-  val next_pc : Trace.event option = None
-
-  method with_next_pc ev = {< next_pc = Some ev >}
-  method next_pc = next_pc
-
-  method set_code c = {< code = Some c >}
-  method code = code
 
   method private make_report data =
     Report.Fields.create ~bil ~data
@@ -118,12 +111,14 @@ class context policy trace = object(self:'s)
       ~left:(Set.to_list (Option.value_exn other)#events)
       ~insn:(Option.value_exn insn)
       ~code:(Option.value_exn code |> Chunk.data)
+ 
+  method private finish_step stat =
+    let self' = 
+      {< other = None; error = None; insn = None; bil = [];
+         events = Events.empty; stat = stat; code = None; >} in
+    self'#drop_pc
 
-  method private finish_step stat =     
-    {< other = None; error = None; insn = None; bil = [];
-       events = Events.empty; stat = stat; code = None; next_pc = None >}
-
-  method merge : 's = 
+  method merge = 
     match error with 
     | Some er -> self#finish_step (Veri_stat.notify stat er)
     | None ->  match insn with
@@ -136,16 +131,21 @@ class context policy trace = object(self:'s)
         | results ->
           let report = self#make_report results in
           Signal.send (snd stream) report;
-          self#finish_step (Veri_stat.failbil stat name)  
+          self#finish_step (Veri_stat.failbil stat name) 
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
     | None -> self
     | Some ev -> {< events = Set.remove events ev >}
-                 
-  method stat = stat  
+
+  method split = 
+    let s = {< other = Some self; events = Events.empty; >} in
+    s#drop_pc
+
+  method set_code c = {< code = Some c >}
+  method code = code
+  method stat = stat
   method events: Events.t = events
-  method split = {< other = Some self; events = Events.empty; next_pc = None >}
   method other = other
   method set_insn s = {< insn = Some s >}
   method register_event ev = {< events = Set.add events ev; >}
@@ -154,7 +154,7 @@ class context policy trace = object(self:'s)
   method reports : Report.t stream = fst stream
   method save someone = {< other = Some someone >}
   method switch = (Option.value_exn other)#save self
-
+  method drop_pc = self#with_pc Bil.Bot
 end
 
 let target_info arch = 
@@ -175,7 +175,7 @@ let is_previous_mv tag test ev =
   | Some mv -> Move.cell mv = test
 
 let is_previous_write = is_previous_mv Event.register_write 
-let is_previous_load  = is_previous_mv Event.memory_load 
+let is_previous_store = is_previous_mv Event.memory_store
 let self_events c = Set.to_list c#events
 let same_var  var  mv = var  = Move.cell mv
 let same_addr addr mv = addr = Move.cell mv
@@ -237,23 +237,18 @@ class ['a] t arch dis is_interesting =
           SM.update (fun c -> c#discard_event (is_previous_write var)) >>= fun () ->
           self#update_event (create_reg_write var data)
         else SM.return ()
-      | Bil.Mem _ | Bil.Bot -> SM.return ()
-
-    method private eval_mem_event tag addr data : 'a e =
-      match value addr, value data with
-      | Bil.Imm addr, Bil.Imm data ->
-        let ev = create_move_event tag addr data in
-        SM.return (Some ev)
-      | _ -> SM.return None
+      | Bil.Mem _ | Bil.Bot -> SM.return ()    
 
     method! eval_store ~mem ~addr data endian size =
       super#eval_store ~mem ~addr data endian size >>= fun r ->
       self#eval_exp addr >>= fun addr ->
       self#eval_exp data >>= fun data ->
-      self#eval_mem_event Event.memory_store addr data >>=
-      function
-      | None -> SM.return r
-      | Some ev -> self#update_event ev >>= fun () -> SM.return r
+      match value addr, value data with
+      | Bil.Imm addr, Bil.Imm data ->
+        SM.update (fun c -> c#discard_event (is_previous_store addr)) >>= fun () ->
+        let ev = create_mem_store addr data in
+        self#update_event ev >>= fun () -> SM.return r
+      | _ -> SM.return r
 
     method private store_and_load ~mem ~addr mv endian size =
       let data = Bil.int (Move.data mv) in
@@ -298,11 +293,32 @@ class ['a] t arch dis is_interesting =
         match find_mem_store (self_events ctxt) (same_addr addr') with
         | Some mv -> self#eval_exp (Bil.int (Move.data mv))
         | None ->
-          self#resolve_addr mem addr endian size >>= fun r ->          
-          self#eval_mem_event Event.memory_load addr_res r >>= fun ev ->
-          match ev with
-          | Some ev -> self#update_event ev >>= fun () -> SM.return r
-          | None -> SM.return r
+          self#resolve_addr mem addr endian size >>= fun r ->
+          match value addr_res, value r with
+          | Bil.Imm addr, Bil.Imm data -> 
+            self#update_event (create_mem_load addr data) >>= fun () -> 
+            SM.return r
+          | _ ->  SM.return r
+
+    (** [finalize_jmp] - adds a pc_update events to real and fake
+        events sets if jump was occured. Has no effect otherwise.
+        In case of jump adds next pc value to real events and adds
+        pc value from bil evaluation to fake events. *)
+    method private finalize_jmp : 'a u = 
+      SM.get () >>= fun ctxt ->
+      match ctxt#pc with 
+      | Bil.Mem _ | Bil.Bot -> SM.return ()
+      | Bil.Imm pc -> 
+        let pc_ev = Value.create Event.pc_update pc in
+        self#update_event pc_ev >>= fun () ->
+        SM.update (fun c -> c#switch) >>= fun () ->
+        SM.get () >>= fun ctxt' ->
+        match ctxt'#pc with
+        | Bil.Mem _ | Bil.Bot -> SM.update (fun c -> c#switch) 
+        | Bil.Imm pc ->
+          let pc_ev = Value.create Event.pc_update pc in
+          self#update_event pc_ev >>= fun () ->
+          SM.update (fun c -> c#switch) 
 
     method private eval_insn (mem, insn) = 
       let name = Disasm.insn_name insn in
@@ -312,7 +328,8 @@ class ['a] t arch dis is_interesting =
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
-        self#eval bil
+        self#eval bil >>= fun () ->
+        self#finalize_jmp
 
     method private eval_chunk chunk =
       SM.update (fun c -> c#set_code chunk) >>= fun () -> 
@@ -324,36 +341,16 @@ class ['a] t arch dis is_interesting =
         | Error er -> SM.update (fun c -> c#notify_error er)
         | Ok insn -> self#eval_insn insn
 
-    method! eval_jmp exp =
-      self#eval_exp exp >>= fun r ->
-      match value r with
-      | Bil.Imm addr ->
-        let pc = Value.create Event.pc_update addr in
-        SM.update (fun c -> c#with_next_pc pc)
-      | Bil.Mem _ | Bil.Bot -> SM.return ()
-
     method! eval_event ev =
-      if Value.is Event.pc_update ev then
-        SM.update (fun c -> c#with_next_pc ev) >>= fun () ->
-        self#verify_frame >>= fun () ->
-        self#update_event ev
-      else if Value.is Event.code_exec ev then
-        SM.update (fun c -> c#set_code (Value.get_exn Event.code_exec ev))
-      else self#update_event ev 
-
-    method private add_pc_update : 'a u = 
-      SM.get () >>= fun ctxt ->
-      match ctxt#next_pc with 
-      | None -> SM.return ()
-      | Some ev -> 
-        self#update_event ev >>= fun () ->
-        SM.update (fun c -> c#switch) >>= fun () ->
-        SM.get () >>= fun ctxt' ->
-        match ctxt'#next_pc with
-        | None -> SM.update (fun c -> c#switch) 
-        | Some ev ->           
-          self#update_event ev >>= fun () ->
-          SM.update (fun c -> c#switch) 
+      Value.Match.(
+        select @@
+        case Event.code_exec (fun code ->
+            SM.update (fun c -> c#set_code code)) @@
+        case Event.pc_update (fun addr ->
+            self#eval_pc_update addr >>= fun () ->
+            self#verify_frame >>= fun () ->
+            self#update_event ev) @@
+        default (fun () -> self#update_event ev)) ev
 
     method private verify_frame : 'a u =
       SM.get () >>= fun ctxt -> 
@@ -362,7 +359,6 @@ class ['a] t arch dis is_interesting =
       | Some code -> 
         SM.update (fun c -> c#split) >>= fun () ->
         self#eval_chunk code      >>= fun () ->
-        self#add_pc_update        >>= fun () ->
         SM.update (fun c -> c#merge)
 
     method! eval_trace trace =

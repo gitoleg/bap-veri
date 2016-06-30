@@ -38,8 +38,7 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     method set_insn: string -> 's
     method set_bil : bil -> 's
     method set_code : Chunk.t -> 's 
-    method with_next_pc : Trace.event -> 's
-    method next_pc : Trace.event option
+    method drop_pc : 's
   end
 
 class ['a] t : arch -> Disasm.t -> (Trace.event -> bool) -> object('s)
