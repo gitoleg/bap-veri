@@ -300,15 +300,16 @@ class ['a] t arch dis is_interesting =
             SM.return r
           | _ ->  SM.return r
 
-    (** [finalize_jmp] - adds a pc_update events to real and fake
-        events sets if jump was occured. Has no effect otherwise.
-        In case of jump adds next pc value to real events and adds
+    (** Adds next pc value to real events and adds
         pc value from bil evaluation to fake events. *)
-    method private finalize_jmp : 'a u = 
+    method! eval_jmp addr : 'a u =
+      super#eval_jmp addr >>= fun () ->
+      SM.update (fun c -> c#switch) >>= fun () ->
       SM.get () >>= fun ctxt ->
+
       match ctxt#pc with 
       | Bil.Mem _ | Bil.Bot -> SM.return ()
-      | Bil.Imm pc -> 
+      | Bil.Imm pc ->       
         let pc_ev = Value.create Event.pc_update pc in
         self#update_event pc_ev >>= fun () ->
         SM.update (fun c -> c#switch) >>= fun () ->
@@ -328,8 +329,7 @@ class ['a] t arch dis is_interesting =
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
-        self#eval bil >>= fun () ->
-        self#finalize_jmp
+        self#eval bil 
 
     method private eval_chunk chunk =
       SM.update (fun c -> c#set_code chunk) >>= fun () -> 

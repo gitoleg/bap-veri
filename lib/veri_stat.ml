@@ -26,6 +26,11 @@ let update t name ~ok ~er =
 let failbil t name = update t name ~ok:0 ~er:1
 let success t name = update t name ~ok:1 ~er:0
 
+let successed_count t =
+  Map.fold ~f:(fun ~key ~data cnt -> 
+      if snd data = 0 then cnt + 1 
+      else cnt) ~init:0 t.calls
+
 let bil_errors {calls} =
   Map.fold ~f:(fun ~key ~data cnt -> cnt + snd data) ~init:0 calls
 
@@ -52,6 +57,17 @@ let mislifted t =
         | _ -> names) t.errors |>
   Set.to_list
 
+let mislifted_count t = 
+  List.length (mislifted t)
+
+let misexecuted_count t =
+  Map.fold ~f:(fun ~key ~data cnt -> 
+      if snd data <> 0 then cnt + 1
+      else cnt) ~init:0 t.calls
+
+let total_count t = 
+  successed_count t + misexecuted_count t + mislifted_count t 
+
 include Regular.Make(struct
     type nonrec t = t [@@deriving bin_io, compare, sexp]
     let compare = compare
@@ -68,7 +84,7 @@ include Regular.Make(struct
           Format.fprintf fmt "%s mis-lifted\n" insn) names
 
     let pp fmt t = 
-      Map.iteri ~f:(fun ~key ~data -> 
+      Map.iteri ~f:(fun ~key ~data ->
           let ok, er = data in
           if er <> 0 then
             Format.fprintf fmt "%s mis-executed %d times(%d successfully)\n"
@@ -79,6 +95,8 @@ include Regular.Make(struct
         pp_count ("overloaded chunks", overloaded_count t)
         pp_count ("damaged chunks", damaged_count t)
         pp_count ("disasm errors", disasm_count t);
+      Format.fprintf fmt "misexecuted: %d; mislifted %d; total %d\n" 
+        (misexecuted_count t) (mislifted_count t) (total_count t)
   end)
 
 
