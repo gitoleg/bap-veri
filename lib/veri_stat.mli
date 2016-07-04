@@ -7,8 +7,11 @@ val notify : t -> Veri_error.t -> t
 val failbil : t -> string -> t
 val success : t -> string -> t
 
-val successed_count : t -> int
-val misexecuted_count : t -> int
-val mislifted_count : t -> int
-
 include Regular with type t := t
+
+module Summary : sig
+  type t
+  include Regular with type t := t
+end
+
+val make_summary: t -> Summary.t

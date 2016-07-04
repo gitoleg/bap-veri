@@ -71,10 +71,11 @@ differrent from value written in lifter for the same flag. And values are
 really different, since only not equal events goes to matching.
       
 ##Usage
+Program works only with files with `.frames` extension.
 ```
-./veri_main.native --show-errors --show-stat --rules "path to rules file" "path to trace file"
+./veri_main.native --show-errors --show-stat --rules "path to rules file" PATH
 
-The only one required argument is a trace file with `.frames` extension.
+`PATH` is either directory with files from a tracer, either a file.
 `show-errors` option allows to see a detailed information about BIL errors
 `show-stat` option allows to see a summary over a trace verification.
 

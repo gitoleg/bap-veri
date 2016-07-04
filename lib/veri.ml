@@ -94,7 +94,7 @@ end
 
 module Events = Value.Set
 
-class context policy trace = object(self:'s)
+class context stat policy trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val events = Events.empty
   val stream = Stream.create ()
@@ -102,7 +102,7 @@ class context policy trace = object(self:'s)
   val other : 's option = None
   val insn  : string option = None
   val code  : Chunk.t option = None
-  val stat  : Veri_stat.t = Veri_stat.create ()
+  val stat  : Veri_stat.t = stat
   val bil   : bil = []
 
   method private make_report data =
@@ -112,7 +112,6 @@ class context policy trace = object(self:'s)
       ~insn:(Option.value_exn insn)
       ~code:(Option.value_exn code |> Chunk.data)
 
-  (** TODO: looks ugly ..  *)
   method private finish_step stat = 
     let s = {< other = None; error = None; insn = None; bil = [];
                stat = stat; events = Events.empty; code = None; >} in
@@ -299,26 +298,20 @@ class ['a] t arch dis is_interesting =
             SM.return r
           | _ ->  SM.return r
 
-    (** Adds next pc value to real events and adds
-        pc value from bil evaluation to fake events. *)
-    method! eval_jmp addr : 'a u =
-      super#eval_jmp addr >>= fun () ->
-      SM.update (fun c -> c#switch) >>= fun () ->
+    method private add_pc_update =
       SM.get () >>= fun ctxt ->
-
       match ctxt#pc with 
       | Bil.Mem _ | Bil.Bot -> SM.return ()
-      | Bil.Imm pc ->       
+      | Bil.Imm pc ->
         let pc_ev = Value.create Event.pc_update pc in
-        self#update_event pc_ev >>= fun () ->
-        SM.update (fun c -> c#switch) >>= fun () ->
-        SM.get () >>= fun ctxt' ->
-        match ctxt'#pc with
-        | Bil.Mem _ | Bil.Bot -> SM.update (fun c -> c#switch) 
-        | Bil.Imm pc ->
-          let pc_ev = Value.create Event.pc_update pc in
-          self#update_event pc_ev >>= fun () ->
-          SM.update (fun c -> c#switch) 
+        self#update_event pc_ev       
+
+    method! eval_jmp addr : 'a u =
+      super#eval_jmp addr >>= fun () ->
+      self#add_pc_update >>= fun () ->
+      SM.update (fun c -> c#switch) >>= fun () ->
+      self#add_pc_update >>= fun () ->
+      SM.update (fun c -> c#switch)
 
     method private eval_insn (mem, insn) = 
       let name = Disasm.insn_name insn in

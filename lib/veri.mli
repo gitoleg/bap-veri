@@ -21,7 +21,7 @@ module Report : sig
   val data : t -> (Veri_policy.rule * Veri_policy.matched) list
 end
 
-class context: Veri_policy.t -> Trace.t -> object('s)
+class context: Veri_stat.t -> Veri_policy.t -> Trace.t -> object('s)
     inherit Veri_traci.context
     method split : 's
     method merge : 's

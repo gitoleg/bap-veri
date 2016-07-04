@@ -1,3 +1,22 @@
+# we completle ignore the following because bil is either empty, 
+# either contains unknown expressions or special statements
+SKIP NOOP. '' '' 
+SKIP RDTSC '' ''
+SKIP SYSCALL.* '' ''
+SKIP CPUID '' ''
+SKIP XGETBV '' ''
+
+# SAR is suspected to be broken in our lifter, because of different 
+# results with tracer
+SKIP SAR.* '' ''
+
+# XOR is suspected to be broken, because in case of same operands,
+# e.g. RAX and RAX, it reads nothing, just write zero to destination
+SKIP XOR.* '.* => .*' ''
+
+# There are a wrong flags reads in our lifter. 
+SKIP SH(L|R).* '' '.F => .*'
+
 # CMOV in our lifter works a bit unstrict. It reads and writes the same value
 # if condition wasn't succeded.
 SKIP CMOV.* '' '.*'
