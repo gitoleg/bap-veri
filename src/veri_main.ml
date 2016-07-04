@@ -125,14 +125,13 @@ let run' rules source show_errs show_stat =
         let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
         Ok ctxt'#stat) in
   match source with
-  | `File file -> 
-    Veri_stat.create () |> eval file f |> print_stat
+  | `File file -> Veri_stat.create () |> eval file f |> print_stat
   | `Dir dir ->    
     let files = read_dir dir in
     let full_path file = String.concat ~sep:"/" [dir; file] in
     let rec loop files stat =
       match files with
-      | [] -> stat
+      | [] -> Ok stat
       | file :: files ->
         Format.(fprintf std_formatter "%s@."  file);
         match eval (full_path file) f stat with
@@ -142,8 +141,7 @@ let run' rules source show_errs show_stat =
         | Ok stat' -> loop files stat' in
     let stat = Veri_stat.create () in
     let stat' = loop files stat in
-    if show_stat then
-      Veri_stat.pp Format.std_formatter stat'
+    print_stat stat'
 
 let run rules path show_errs show_stat = 
   let src = 
