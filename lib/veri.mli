@@ -35,9 +35,9 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     method register_event : Trace.event -> 's
     method discard_event : (Trace.event -> bool) -> 's
     method notify_error: Veri_error.t -> 's
-    method set_insn: string -> 's
     method set_bil : bil -> 's
     method set_code : Chunk.t -> 's 
+    method set_insn: string -> 's
     method drop_pc : 's
   end
 

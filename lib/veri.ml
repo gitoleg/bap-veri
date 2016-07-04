@@ -97,13 +97,13 @@ module Events = Value.Set
 class context policy trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val events = Events.empty
-  val other  = None
   val stream = Stream.create ()
-  val insn  : string option = None
   val error : error option = None
-  val bil   : bil = []
+  val other : 's option = None
+  val insn  : string option = None
   val code  : Chunk.t option = None
   val stat  : Veri_stat.t = Veri_stat.create ()
+  val bil   : bil = []
 
   method private make_report data =
     Report.Fields.create ~bil ~data
@@ -111,17 +111,17 @@ class context policy trace = object(self:'s)
       ~left:(Set.to_list (Option.value_exn other)#events)
       ~insn:(Option.value_exn insn)
       ~code:(Option.value_exn code |> Chunk.data)
- 
-  method private finish_step stat =
-    let self' = 
-      {< other = None; error = None; insn = None; bil = [];
-         events = Events.empty; stat = stat; code = None; >} in
-    self'#drop_pc
+
+  (** TODO: looks ugly ..  *)
+  method private finish_step stat = 
+    let s = {< other = None; error = None; insn = None; bil = [];
+               stat = stat; events = Events.empty; code = None; >} in
+    s#drop_pc
 
   method merge = 
     match error with 
     | Some er -> self#finish_step (Veri_stat.notify stat er)
-    | None ->  match insn with
+    | None -> match insn with
       | None -> self#finish_step stat
       | Some name ->
         let other = Option.value_exn self#other in
@@ -142,18 +142,18 @@ class context policy trace = object(self:'s)
     let s = {< other = Some self; events = Events.empty; >} in
     s#drop_pc
 
-  method set_code c = {< code = Some c >}
-  method code = code
-  method stat = stat
-  method events: Events.t = events
+  method code  = code
+  method stat  = stat
   method other = other
+  method events  = events
+  method reports = fst stream
+  method set_bil  b = {< bil = b >}
+  method set_code c = {< code = Some c >}
   method set_insn s = {< insn = Some s >}
+  method notify_error er   = {< error = Some er >}
   method register_event ev = {< events = Set.add events ev; >}
-  method notify_error er = {< error = Some er >}
-  method set_bil bil = {< bil = bil >}
-  method reports : Report.t stream = fst stream
-  method save someone = {< other = Some someone >}
-  method switch = (Option.value_exn other)#save self
+  method save s  = {< other = Some s >}
+  method switch  = (Option.value_exn other)#save self
   method drop_pc = self#with_pc Bil.Bot
 end
 
@@ -179,7 +179,6 @@ let is_previous_store = is_previous_mv Event.memory_store
 let self_events c = Set.to_list c#events
 let same_var  var  mv = var  = Move.cell mv
 let same_addr addr mv = addr = Move.cell mv
-let is_never_read events var = find_reg_read events (same_var var) = None
 
 class ['a] t arch dis is_interesting =
   let endian = Arch.endian arch in
@@ -300,10 +299,8 @@ class ['a] t arch dis is_interesting =
             SM.return r
           | _ ->  SM.return r
 
-    (** [finalize_jmp] - adds a pc_update events to real and fake
-        events sets if jump was occured. Has no effect otherwise.
-        In case of jump adds next pc value to real events and adds
-        pc value from bil evaluation to fake events. *)
+    (** [finalize_jmp] - in case of jump adds next pc value to real events 
+        and adds pc value from bil evaluation to fake events. *)
     method private finalize_jmp : 'a u = 
       SM.get () >>= fun ctxt ->
       match ctxt#pc with 
