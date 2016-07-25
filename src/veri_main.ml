@@ -39,18 +39,6 @@ let string_of_error = function
   | `No_provider -> "no provider"
   | `Ambiguous_uri -> "ambiguous uri"
 
-let eval file f stat = 
-  let uri = Uri.of_string ("file:" ^ file) in
-  match Trace.load uri with
-  | Error er -> 
-    let ers = 
-      Printf.sprintf "error during loading trace: %s\n" (string_of_error er) in
-    Error (Error.of_string ers)
-  | Ok trace ->
-    match Dict.find (Trace.meta trace) Meta.arch with
-    | Some arch -> f arch trace stat
-    | None -> Error (Error.of_string "trace of unknown arch")
-
 let default_policy = 
   let open Veri_rule in  
   let p = Veri_policy.(add empty (create_exn ~insn:".*" ~left:".*" deny)) in
@@ -62,92 +50,81 @@ let make_policy = function
     read_rules file |>
     List.fold ~f:Veri_policy.add ~init:Veri_policy.empty
 
-let pp_result fmt report  = 
-  Format.fprintf fmt "%a" Veri.Report.pp report;
-  Format.print_flush ()
-
 let errors_stream s = 
+  let pp_result fmt report  = 
+    Format.fprintf fmt "%a" Veri.Report.pp report;
+    Format.print_flush () in
   ignore(Stream.subscribe s (pp_result Format.std_formatter))
 
 let is_supported ev = 
-    let supported _ = true in
-    Value.Match.(
-      select @@
-      case Event.code_exec supported @@
-      case Event.register_read supported @@
-      case Event.register_write supported @@
-      case Event.memory_load supported @@
-      case Event.memory_store supported @@
-      case Event.pc_update supported @@
-      default (fun () -> false)) ev
+  let supported _ = true in
+  Value.Match.(
+    select @@
+    case Event.code_exec supported @@
+    case Event.register_read supported @@
+    case Event.register_write supported @@
+    case Event.memory_load supported @@
+    case Event.memory_store supported @@
+    case Event.pc_update supported @@
+    default (fun () -> false)) ev
 
-let read_dir path = 
-  let d = Unix.opendir path in
-  let suf = ".frames" in
-  let read_name () = 
-    try 
-      Some (Unix.readdir d)
-    with End_of_file -> None in
-  let rec folddir acc = 
-    match read_name () with
-    | Some filename -> 
-      if Filename.check_suffix filename suf then
-        folddir (filename :: acc) 
-      else 
-        folddir acc 
-    | None -> acc in
-  let files = folddir [] in
-  Unix.closedir d;
-  files
-
-let print_veri_error er = 
-  Error.to_string_hum er |>
-  Printf.eprintf "error in verification: %s" 
+let eval_file file stat policy show_errs = 
+  let mk_er s = Error (Error.of_string s) in
+  let uri = Uri.of_string ("file:" ^ file) in
+  match Trace.load uri with
+  | Error er -> 
+    Printf.sprintf "error during loading trace: %s\n" (string_of_error er) |>
+    mk_er 
+  | Ok trace ->
+    match Dict.find (Trace.meta trace) Meta.arch with
+    | None -> mk_er "trace of unknown arch"
+    | Some arch ->
+      Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
+          let dis = Dis.store_asm dis |> Dis.store_kinds in          
+          let ctxt = new Veri.context stat policy trace in
+          let veri = new Veri.t arch dis is_supported in
+          if show_errs then errors_stream ctxt#reports;
+          let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
+          Ok ctxt'#stat)
 
 let print_summary stat =
   let s = Veri_stat.make_summary stat in
   Format.(fprintf std_formatter "%a\n" Veri_stat.Summary.pp s) 
 
-let run' rules source show_errs show_stat = 
-  let policy = make_policy rules in
-  let print_stat stat = match stat with 
-    | Error er -> print_veri_error er
-    | Ok stat ->
-      if show_stat then
-        Veri_stat.pp Format.std_formatter stat;
-      print_summary stat in
-  let f arch trace stat = 
-    Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
-        let dis = Dis.store_asm dis |> Dis.store_kinds in          
-        let ctxt = new Veri.context stat policy trace in
-        let veri = new Veri.t arch dis is_supported in
-        if show_errs then errors_stream ctxt#reports;
-        let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
-        Ok ctxt'#stat) in
-  match source with
-  | `File file -> Veri_stat.create () |> eval file f |> print_stat
-  | `Dir dir ->    
-    let files = read_dir dir in
-    let full_path file = String.concat ~sep:"/" [dir; file] in
-    let rec loop files stat =
-      match files with
-      | [] -> Ok stat
-      | file :: files ->
-        Format.(fprintf std_formatter "%s@."  file);
-        match eval (full_path file) f stat with
-        | Error er ->
-          print_veri_error er;
-          loop files stat
-        | Ok stat' -> loop files stat' in
-    let stat = Veri_stat.create () in
-    let stat' = loop files stat in
-    print_stat stat'
+let read_dir path = 
+  let dir = Unix.opendir path in
+  let fullpath file = String.concat ~sep:"/" [path; file] in
+  let is_trace file = Filename.check_suffix file ".frames" in
+  let next () = 
+    try 
+      Some (Unix.readdir dir)
+    with End_of_file -> None in
+  let rec folddir acc = 
+    match next () with
+    | Some file -> 
+      if is_trace file then folddir (fullpath file :: acc) 
+      else folddir acc 
+    | None -> acc in
+  let files = folddir [] in
+  Unix.closedir dir;
+  files
 
 let run rules path show_errs show_stat = 
-  let src = 
-    if Sys.is_directory path then `Dir path
-    else `File path in
-  run' rules src show_errs show_stat
+  let files = 
+    if Sys.is_directory path then (read_dir path)
+    else [path] in
+  let policy = make_policy rules in
+  let eval stat file = 
+    Format.(fprintf std_formatter "%s@." file);
+    match eval_file file stat policy show_errs with
+    | Error er -> 
+      Error.to_string_hum er |>
+      Printf.eprintf "error in verification: %s";
+      stat
+    | Ok stat' -> stat' in
+  let stat = List.fold ~init:(Veri_stat.create ()) ~f:eval files in
+  if show_stat then Veri_stat.pp Format.std_formatter stat;
+  print_summary stat
 
 module Command = struct
 

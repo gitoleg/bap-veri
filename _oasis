@@ -31,7 +31,7 @@ Executable veri_main
   Path:           src
   MainIs:         veri_main.ml
   CompiledObject: best
-  BuildDepends:   findlib.dynload, bap, bap.plugins, 
+  BuildDepends:   findlib.dynload, bap, bap.plugins,
                   bap-veri, bap-traces, cmdliner
 
 Executable run_tests
@@ -43,6 +43,6 @@ Executable run_tests
   CompiledObject: best
 
 Test veri_test
-  TestTools:      run_tests 
-  Run$:           flag(tests) 
+  TestTools:      run_tests
+  Run$:           flag(tests)
   Command:        $run_tests -runner sequential
