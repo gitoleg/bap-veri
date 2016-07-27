@@ -135,28 +135,30 @@ module Program (O : Opts) = struct
 
 end
 
-
 module Command = struct
 
   open Cmdliner
-
+      
   let filename = 
     let doc = 
       "Input file with extension .frames of directory with .frames files" in 
     Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"FILE | DIR") 
       
-  let rules =
+  let rules, rules' =
+    let name = "rules" in
     let doc = "File with policy description" in
-    Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
+    Arg.(value & opt (some non_dir_file) None & info [name] ~docv:"FILE" ~doc),
+    name
 
-  let show_errors = 
-    let doc = "Show detailed information about BIL errors." in
-    Arg.(value & flag & info ["show-errors"] ~doc)
-      
-  let show_stat = 
-    let doc = "Show verification summary" in
-    Arg.(value & flag & info ["show-stat"] ~doc)
-     
+  let make_flag ~doc ~name = Arg.(value & flag & info [name] ~doc), name
+
+  let show_errors, show_errors' = 
+    make_flag ~name:"show-errors" 
+      ~doc:"Show detailed information about BIL errors"
+
+  let show_stat, show_stat' =
+    make_flag ~name:"show-stat" ~doc:"Show verification statistic"
+
   let info =
     let doc = "Bil verification tool" in
     let man = [
@@ -171,9 +173,9 @@ module Command = struct
   let run_t = Term.(const create $ rules $ show_errors $ show_stat $ filename)
 
   let filter_argv argv = 
-    let ours = [ "rules"; "show-errors"; "show-stat"; ] in
+    let ours = [ rules'; show_errors'; show_stat'; ] in
     let prefix = "--" in
-    let is_our arg = 
+    let is_our arg =      
       if String.is_prefix arg ~prefix then
         List.exists ours ~f:(fun a -> prefix ^ a = arg) 
       else true in
@@ -182,12 +184,10 @@ module Command = struct
   let parse argv = 
     let argv = filter_argv argv in
     match Term.eval ~argv (run_t, info) ~catch:false with
-    | `Ok opts -> Ok opts
+    | `Ok opts -> opts
     | `Error `Parse -> exit 64
     | `Error _ -> exit 2
     | _ -> exit 1
-
-  let run () = match Term.eval (run_t, info) with `Error _ -> exit 1 | _ -> exit 0
 
 end
 
@@ -195,13 +195,7 @@ let start options =
   let module Program = Program(struct
       let options = options
     end) in
-  Ok (Program.main ())
+  Program.main ()
 
-let get_opt ~default  argv opt  =
-  Option.value (fst (Cmdliner.Term.eval_peek_opts ~argv opt)) ~default
+let () = start (Command.parse Sys.argv)
 
-let () = 
-  let open Or_error in
-  match Command.parse Sys.argv >>= start with
-  | Ok _ -> exit 0
-  | Error err -> exit 64 
