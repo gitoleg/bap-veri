@@ -324,7 +324,6 @@ class ['a] t arch dis is_interesting =
         self#eval bil 
 
     method private eval_chunk chunk =
-      SM.update (fun c -> c#set_code chunk) >>= fun () -> 
       self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
       match memory_of_chunk endian chunk with
       | Error er -> SM.update (fun c -> c#notify_error (`Damaged_chunk er))
