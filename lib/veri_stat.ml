@@ -64,6 +64,18 @@ let mislifted_names t =
         | _ -> names) t.errors |>
   Set.to_list
 
+let print_table fmt info data = 
+  let open Textutils.Std in
+  let open Ascii_table in
+  let make_col name f = Column.create name f in
+  let cols = 
+    List.fold ~f:(fun acc (name, f) -> make_col name f :: acc) ~init:[] info |> 
+    List.rev in
+  let stringify display =
+    Printf.sprintf "%s\n%!"
+      (to_string ~bars:`Ascii ~display cols data) in
+  Format.fprintf fmt "%s" (stringify Display.short_box)
+
 module R = Regular.Make(struct
     type nonrec t = t [@@deriving bin_io, compare, sexp]
     let compare = compare
@@ -71,64 +83,53 @@ module R = Regular.Make(struct
     let module_name = Some "Veri_stat"
     let version = "0.1"
 
-    let pp_count fmt (name, cnt) = 
-      if cnt <> 0 then
-        Format.fprintf fmt "%s: %d; " name cnt
+    let pp_misexecuted fmt = function
+      | [] -> ()
+      | mis -> 
+        print_table fmt 
+          [ "instruction", fst;
+            "failed", (fun (_, (_,er)) -> Printf.sprintf "%d" er);
+            "successful", (fun (_, (ok,_)) -> Printf.sprintf "%d" ok); ] 
+          mis
 
-    let pp_lift_errors fmt t = 
-      mislifted_names t |>
-      List.iter ~f:(fun insn ->
-          Format.fprintf fmt "%s mis-lifted\n" insn) 
+    let pp_name fmt name = Format.fprintf fmt "%s @," name
+    let pp_names fmt names = List.iter ~f:(pp_name fmt) names
 
+    let pp_mislifted fmt = function 
+      | [] -> ()
+      | names ->
+        let names' = "mis-lifted:" :: names in
+        Format.fprintf fmt "@[<b>%a@]" pp_names names'
+        
     let pp fmt t = 
-      Map.iteri ~f:(fun ~key ~data ->
-          let ok, er = data in
-          if er <> 0 then
-            Format.fprintf fmt "%s mis-executed %d times(%d successfully)\n"
-              key er ok) t.calls;
-      Format.fprintf fmt "%a" pp_lift_errors t;
-      Format.fprintf fmt "%a%a%a%a%a%a\n"
-        pp_count ("overloaded chunks", overloaded_count t)
-        pp_count ("undisasmed", undisasmed_count t)
-        pp_count ("misexecuted", misexecuted_count t)
-        pp_count ("mislifted ", mislifted_count t)
-        pp_count ("damaged", damaged_count t)
-        pp_count ("successed", successed_count t)
-
+      let misexec = 
+        List.filter ~f:(fun (_,(_,er)) -> er <> 0) (Map.to_alist t.calls) in
+      let mislift = mislifted_names t in
+      Format.fprintf fmt "%a\n%a\n"
+        pp_misexecuted misexec pp_mislifted mislift
   end)
 
 module Summary = struct
 
-  type s = {
-    overloaded : float;
-    undisasmed : float;
-    misexecuted: float;
-    mislifted  : float;
-    damaged    : float;
-    successed  : float;
-  } [@@deriving bin_io, compare, sexp]
-  
-  type t = s option [@@deriving bin_io, compare, sexp]
-      
-  let to_percent n d = float n /. float d *. 100.0
-  let overloaded stat = to_percent (overloaded_count stat) (entries_count stat)
-  let undisasmed stat = to_percent (undisasmed_count stat) (entries_count stat)
-  let misexecuted stat =to_percent (misexecuted_count stat) (entries_count stat)
-  let mislifted stat = to_percent (mislifted_count stat) (entries_count stat)
-  let damaged stat = to_percent (damaged_count stat) (entries_count stat)
-  let successed stat = to_percent (successed_count stat) (entries_count stat)
+  (** what, relative count, absolute count *)
+  type p = string * float * int [@@deriving bin_io, sexp, compare]
+  type t = p list [@@deriving bin_io, sexp, compare]
+
+  let to_percent n d  = float n /. float d *. 100.0      
+
+  let make_p stat name f = 
+    let nom, denom = f stat, entries_count stat in
+    name, to_percent nom denom, nom
 
   let create stat =
-    if entries_count stat = 0 then None
+    if entries_count stat = 0 then []
     else
-      Some ({
-          overloaded = overloaded stat;
-          undisasmed = undisasmed stat;
-          misexecuted = misexecuted stat;
-          mislifted   = mislifted stat;
-          damaged     = damaged stat;
-          successed   = successed stat;
-        })
+      [ make_p stat "overloaded" overloaded_count;
+        make_p stat "undisasmed" undisasmed_count;
+        make_p stat "misexecuted" misexecuted_count;
+        make_p stat "mislifted" mislifted_count; 
+        make_p stat "damaged"  damaged_count;
+        make_p stat "successed" successed_count; ]
 
   include Regular.Make(struct
       type nonrec t = t [@@deriving bin_io, compare, sexp]
@@ -137,17 +138,16 @@ module Summary = struct
       let module_name = Some "Veri_stat.Summary"
       let version = "0.1"
 
-      let pp fmt t =
-        match t with
-        | None -> Format.fprintf fmt "summary is unavailable\n"
-        | Some t ->
-          Format.fprintf fmt "overloaded: %.2f%%; undisasmed %.2f%%; \
-                              misexecuted %.2f%%; mislifted %.2f%%; \
-                              damaged %.2f%%; successed %.2f%%\n" 
-            t.overloaded t.undisasmed 
-            t.misexecuted t.mislifted 
-            t.damaged t.successed 
+      let pp fmt = function
+        | [] -> Format.fprintf fmt "summary is unavailable\n"
+        | ps ->
+          print_table fmt 
+            ["", (fun (x,_,_) -> x);
+             "rel", (fun (_,x,_) -> Printf.sprintf "%.2f%%" x);
+             "abs",  (fun (_,_,x) -> Printf.sprintf "%d" x);]
+            ps
     end)
+
 end
 
 let make_summary stat = Summary.create stat

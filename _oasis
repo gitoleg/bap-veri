@@ -16,9 +16,10 @@ Library veri
   FindLibName:    bap-veri
   Modules:        Veri, Veri_error, Veri_stat, Veri_traci, Veri_policy
   CompiledObject: best
+  Install:        false
   NativeOpt:      -pp 'ppx-jane -dump-ast'
   ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   bap, bap-traces
+  BuildDepends:   bap, bap-traces, textutils, threads
 
 Library veri_test
   Path:           tests
@@ -31,6 +32,7 @@ Executable veri_main
   Path:           src
   MainIs:         veri_main.ml
   CompiledObject: best
+  Install:        true
   BuildDepends:   findlib.dynload, bap, bap.plugins,
                   bap-veri, bap-traces, cmdliner
 
