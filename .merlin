@@ -6,6 +6,7 @@ S src
 S tests
 
 PKG core_kernel
+PKG core_bench
 PKG cmdliner
 PKG oUnit
 PKG bap
