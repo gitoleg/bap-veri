@@ -1,0 +1,46 @@
+# we completle ignore the following because bil is either empty, 
+# either contains unknown expressions or special statements
+SKIP NOOP. '' '' 
+SKIP RDTSC '' ''
+SKIP SYSCALL.* '' ''
+SKIP CPUID '' ''
+SKIP XGETBV '' ''
+
+#this one doesn't perform any write operation in our lifter
+#SKIP FNSTCW16m '' ''
+
+#differences in ZF flag writing
+SKIP TZCNT64rr 'ZF <= .*' 'ZF <= .*'
+
+# SAR is suspected to be broken in our lifter, because of different 
+# results with tracer
+SKIP SAR.* '' ''
+
+# XOR is suspected to be broken, because in case of same operands,
+# e.g. RAX and RAX, it reads nothing, just write zero to destination
+SKIP XOR.* '.* => .*' ''
+
+# There are a wrong flags reads in our lifter. 
+SKIP SH(L|R).* '' '.F => .*'
+
+# CMOV in our lifter works a bit unstrict. It reads and writes the same value
+# if condition wasn't succeded.
+SKIP CMOV.* '' '.*'
+
+# insn contains a conditional branch. As a result, in tracer, 
+# if a condition is not satisfied then the same value 
+# is written (the same as was read).
+SKIP CMPXCHG.* '.* <= .*' ''
+
+# LEAVE insn has additional read from RSP in our tracer
+SKIP LEAVE.* 'RSP => .*' ''
+
+# Our flags reads(writes) should be subset of tracer 
+# reads(writes). But writes should be with same value
+SKIP .* '.F => .*' '' 
+DENY .* '(.F) <= .*' '\1 <= .*'
+SKIP .* '.F <= .*' ''
+
+# Last rules means that every event should has a pair
+DENY .* '.*' ''
+DENY .* '' '.*'
