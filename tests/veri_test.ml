@@ -1,6 +1,7 @@
 open Core_kernel.Std
 open OUnit2
 open Bap.Std
+open Bap_future.Std
 open Bap_traces.Std
 open Event
 
@@ -35,48 +36,56 @@ let make_chunk addr' data' =
 
 let make_event tag value = Value.create tag value
 
+let make_events_stream evs = 
+  let evs' = ref evs in
+  let rec next () = match !evs' with
+    | [] -> None
+    | hd :: tl -> 
+      evs' := tl;
+      Some (Ok hd) in
+  next
+
 let make_trace code real_evs = 
-  let events = Seq.of_list (code::real_evs) in
-  let trace = Trace.create test_tool in
-  let trace = Trace.set_attr trace Meta.arch arch in
-  Trace.append trace events 
+  let next = make_events_stream (code::real_evs) in
+  let trace = Trace.create test_tool next in
+  Trace.set_attr trace Meta.arch arch
 
 let is_equal_events evs evs' =
   let is_exists ev = List.exists ~f:(fun ev' -> ev = ev') evs' in
   List.length evs = List.length evs' &&
   List.for_all ~f:is_exists evs
 
+let test_policy =
+  let open Veri_policy in
+  let rule = ok_exn (Veri_rule.create
+      ~insn:" *" ~left:" *" Veri_rule.deny) in
+  List.fold ~init:empty ~f:add (rule :: [])
+
 let eval_trace trace =
   Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
-      let dis = Dis.store_asm dis |> Dis.store_kinds in          
-      let report = Veri_report.create () in
-      let ctxt = new Veri.context report trace in
-      let veri  = new Veri.t arch dis (fun _ -> true) in
-      let ctxt' = 
+      let dis = Dis.store_asm dis |> Dis.store_kinds in 
+      let stat = Veri_stat.empty in
+      let ctxt = new Veri.context stat test_policy trace in
+      let veri = new Veri.t arch dis (fun _ -> true) in
+      let hd = Stream.hd ctxt#reports in
+      let _ctxt' = 
         Monad.State.exec (veri#eval_trace trace) ctxt in
-      Ok ctxt'#report)
+      Ok hd)
 
-let hd_frames = function
-  | [] -> None
-  | (name, diffs) :: _ -> 
-    match diffs with
-    | [] -> None
-    | hd ::_ -> Some (name, hd)
-
-let check_trace pref trace expected =
+let check_left_diff pref trace expected =
   match eval_trace trace with 
   | Error er -> 
-    let s = Printf.sprintf "%s: %s" pref (Error.to_string_hum er) in
-    assert_false s 
-  | Ok report ->
-    match hd_frames (Veri_report.frames report) with 
-    | None -> 
-      let s = Printf.sprintf "%s: empty frames" pref in
-      assert_false s
-    | Some (name, (left,_)) ->
-      let diff = Set.to_list left in
-      let s = Printf.sprintf "%s: diff equality check" pref in
-      assert_bool s (is_equal_events expected diff)
+    assert_false (Printf.sprintf "%s: %s" pref (Error.to_string_hum er))
+  | Ok hd ->
+    match Future.peek hd with 
+    | None ->
+      assert_false (Printf.sprintf "%s: no left match" pref)
+    | Some r ->
+      match Veri_report.data r with 
+      | [] -> assert_false (Printf.sprintf "%s: no left match" pref)
+      | (rule,(left,_))::_ ->       
+        let s = Printf.sprintf "%s: diff equality check" pref in
+        assert_bool s (is_equal_events expected left)
 
 (** MOV32rr: { EAX := low:32[ESP] } *)
 let test_reg ctxt = 
@@ -89,8 +98,8 @@ let test_reg ctxt =
   let e5 = make_event pc_update (word_of_int 0xF67DE0D2) in
   let real_evs = [e0;e1;e2;e3;e4;e5;] in
   let trace = make_trace code real_evs in
-  let expected_diff = [e0; e1; e4; e5] in
-  check_trace "test_reg" trace expected_diff
+  let expected_diff = [e0; e1; e4;] in
+  check_left_diff "test_reg" trace expected_diff
       
 (** MOV32mr: 
     { 
@@ -107,8 +116,8 @@ let test_mem_store ctxt =
   let e5 = make_event pc_update (word_of_int 0xF67E17D7) in
   let real_events = [e0;e1;e2;e3;e4;e5;] in
   let trace = make_trace code real_events in
-  let expected_diff = [e0; e4; e5] in
-  check_trace "test_mem_store" trace expected_diff
+  let expected_diff = [e0; e4;] in
+  check_left_diff "test_mem_store" trace expected_diff
 
 (** MOV32rm : { EBX := mem32[low:32[ESP], el]:u32 }*)
 let test_mem_load ctxt = 
@@ -121,11 +130,11 @@ let test_mem_load ctxt =
   let e5 = make_event pc_update (word_of_int 0xF67F57AB) in
   let real_evs = [e0;e1;e2;e3;e4;e5;] in
   let trace = make_trace code real_evs in
-  let expected_diff = [e0; e4; e5] in  
-  check_trace "test_mem_load" trace expected_diff
+  let expected_diff = [e0; e4;] in  
+  check_left_diff "test_mem_load" trace expected_diff
 
 let suite () =
-  "Veri test reg" >:::
+  "Veri test" >:::
   [
     "reg test"        >:: test_reg;
     "mem store test"  >:: test_mem_store;
