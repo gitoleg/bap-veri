@@ -80,7 +80,7 @@ really different, since only not equal events goes to matching.
 ##Usage
 Program works only with files with `.frames` extension.
 ```
-bil-veri --show-errors --show-stat --rules "path to rules file" PATH
+bap-veri --show-errors --show-stat --rules "path to rules file" PATH
 
 `PATH` is either directory with files from a tracer, either a file.
 `show-errors` option allows to see a detailed information about BIL errors
