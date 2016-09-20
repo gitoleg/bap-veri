@@ -1,5 +1,5 @@
 OASISFormat:  0.4
-Name:         bil-veri
+Name:         bap-veri
 Version:      0.2
 Synopsis:     Bil verification tool
 Authors:      BAP Team
@@ -22,7 +22,7 @@ Library veri
                   Veri_stat,
                   Veri_traci
   CompiledObject: best
-  Install:        false
+  Install:        true
   NativeOpt:      -pp 'ppx-jane -dump-ast'
   ByteOpt:        -pp 'ppx-jane -dump-ast'
   BuildDepends:   pcre, textutils, threads
@@ -38,7 +38,7 @@ Library veri_test
                   Veri_stat_test
   BuildDepends:   bap-veri, oUnit
 
-Executable "bil-veri"
+Executable "bap-veri"
   Path:           src
   MainIs:         veri_main.ml
   CompiledObject: best
