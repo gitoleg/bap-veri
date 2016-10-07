@@ -73,9 +73,7 @@ module Program (O : Opts) = struct
       Format.fprintf fmt "%a" Veri_report.pp report;
       Format.print_flush () in
     ignore(Stream.subscribe s (pp_result Format.std_formatter))
-  
-  let is_interesting ev = not (Value.is Event.context_switch ev)
-  
+      
   let eval_file file policy  = 
     let mk_er s = Error (Error.of_string s) in
     let uri = Uri.of_string ("file:" ^ file) in
@@ -91,7 +89,7 @@ module Program (O : Opts) = struct
             let dis = Dis.store_asm dis |> Dis.store_kinds in
             let stat = Veri_stat.empty in
             let ctxt = new Veri.context stat policy trace in
-            let veri = new Veri.t arch dis is_interesting in
+            let veri = new Veri.t arch dis in
             if options.show_errs then errors_stream ctxt#reports;
             let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
             Ok ctxt'#stat)

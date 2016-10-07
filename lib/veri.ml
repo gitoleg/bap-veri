@@ -137,7 +137,7 @@ let self_events c = Set.to_list c#events
 let same_var  var  mv = var  = Move.cell mv
 let same_addr addr mv = addr = Move.cell mv
 
-class ['a] t arch dis is_interesting =
+class ['a] t arch dis =
   let endian = Arch.endian arch in
   let mem_var, lift = target_info arch in
 
@@ -146,8 +146,7 @@ class ['a] t arch dis is_interesting =
     inherit ['a] Veri_traci.t arch as super
 
     method private update_event ev =
-      if is_interesting ev then SM.update (fun c -> c#register_event ev)
-      else SM.return () 
+      SM.update (fun c -> c#register_event ev)
 
     (** [resolve_var var] - returns a result, bound with [var].
         Sequence of searches is the following:

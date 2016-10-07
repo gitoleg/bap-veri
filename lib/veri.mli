@@ -30,7 +30,7 @@ class context: Veri_stat.t -> Veri_policy.t -> Trace.t -> object('s)
     method drop_pc : 's
   end
 
-class ['a] t : arch -> Disasm.t -> (Trace.event -> bool) -> object('s)
+class ['a] t : arch -> Disasm.t -> object('s)
     constraint 'a = #context
     inherit ['a] Veri_traci.t
   end
