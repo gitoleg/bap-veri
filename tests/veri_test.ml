@@ -66,7 +66,7 @@ let eval_trace trace =
       let dis = Dis.store_asm dis |> Dis.store_kinds in 
       let stat = Veri_stat.empty in
       let ctxt = new Veri.context stat test_policy trace in
-      let veri = new Veri.t arch dis (fun _ -> true) in
+      let veri = new Veri.t arch dis in
       let hd = Stream.hd ctxt#reports in
       let _ctxt' = 
         Monad.State.exec (veri#eval_trace trace) ctxt in
