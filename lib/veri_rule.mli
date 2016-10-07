@@ -6,7 +6,7 @@ open Regular.Std
 type t [@@deriving bin_io, compare, sexp]
 type action [@@deriving bin_io, compare, sexp]
 type field
-include Regular with type t := t
+include Regular.S with type t := t
 
 (** [create ~insn ~left ~right action] - returns a rule,
     if all of fields {insn, left, right} either contains 

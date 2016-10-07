@@ -9,7 +9,7 @@ type rule = Veri_rule.t
 
 module Matched : sig
   type t = event list * event list [@@deriving bin_io, compare, sexp]
-  include Regular with type t := t
+  include Regular.S with type t := t
 end
 
 type matched = Matched.t [@@deriving bin_io, compare, sexp]

@@ -11,7 +11,7 @@ val success : t -> string -> t
 
 val pp_summary: Format.formatter -> t -> unit
 
-include Regular with type t := t
+include Regular.S with type t := t
 
 (** Terms:
     successed       - instructions, that were successfuly lifted and evaluted

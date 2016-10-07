@@ -8,7 +8,7 @@ type matched = Veri_policy.matched [@@deriving bin_io, compare, sexp]
 type rule = Veri_rule.t [@@deriving bin_io, compare, sexp]
 
 type t [@@deriving bin_io, sexp]
-include Regular with type t := t
+include Regular.S with type t := t
 
 val create :
   bil:Bap.Std.bil ->
