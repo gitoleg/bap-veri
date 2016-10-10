@@ -1,0 +1,25 @@
+language: c
+script: bash -ex .travis-opam.sh
+sudo: false
+
+cache:
+  directories:
+    - $HOME/.opam
+  before_cache:
+    - opam remove bap-veri -y
+    - rm -rf $HOME/.opam/log
+
+addons:
+  apt:
+    sources:
+    - avsm
+    packages:
+    - m4
+    - libpcre3-dev
+    - ocaml
+    - ocaml-base
+    - ocaml-base-nox
+    - ocaml-native-compilers
+    - ocaml-nox
+env:
+  - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true PACKAGE=bap-veri OCAML_VERSION=latest TESTS=false
