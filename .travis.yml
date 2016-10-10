@@ -11,11 +11,12 @@ cache:
 
 addons:
   apt:
-    sources:
+    sources:    
     - avsm
     packages:
     - m4
     - libpcre3-dev
+    - libgmp-dev
     - ocaml
     - ocaml-base
     - ocaml-base-nox
