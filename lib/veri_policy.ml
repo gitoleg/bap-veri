@@ -37,13 +37,13 @@ end
 
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
 type t = rule list [@@deriving bin_io, compare, sexp]
- 
+
 let empty = []
 let add t rule : t = rule :: t
 
-let string_of_events ev ev' = 
+let string_of_events ev ev' =
   String.concat ~sep:" " [Value.pps () ev; Value.pps () ev']
-  
+
 let sat_events r ev ev' =
   Value.typeid ev = Value.typeid ev' &&
   Rule.match_field r `Both (string_of_events ev ev')
@@ -64,7 +64,7 @@ module G = struct
   end
   type dir = Succ | Pred
 
-  let iter dir f (rule, workers, jobs) v = 
+  let iter dir f (rule, workers, jobs) v =
     match v,dir with
     | V.Source,Pred -> ()
     | V.Source,Succ ->
@@ -106,61 +106,69 @@ end
 module FFMF = Flow.Ford_Fulkerson(G)(F)
 
 let single_match fmatch events =
-  let f ev = fmatch (Value.pps () ev) in   
+  let f ev = fmatch (Value.pps () ev) in
   List.filter ~f (Set.to_list events)
 
-let match_right rule events = 
-  match single_match (Rule.match_field rule `Right) events with 
+let match_right rule events =
+  match single_match (Rule.match_field rule `Right) events with
   | [] -> None
-  | ms -> Some ([], ms)  
+  | ms -> Some ([], ms)
 
-let match_left rule events = 
-  match single_match (Rule.match_field rule `Left) events with 
+let match_left rule events =
+  match single_match (Rule.match_field rule `Left) events with
   | [] -> None
-  | ms -> Some (ms,[])  
+  | ms -> Some (ms,[])
 
-let match_both rule left right = 
-  let workers = Set.to_array left in      
+let match_both rule left right =
+  let workers = Set.to_array left in
   let jobs = Set.to_array right in
   let (flow,_) = FFMF.maxflow (rule, workers, jobs) G.V.Source G.V.Sink in
   Array.foldi workers ~init:([],[])
-    ~f:(fun i (acc, acc') w ->   
+    ~f:(fun i (acc, acc') w ->
         match Array.findi jobs ~f:(fun j e ->
             flow (G.E.make (G.V.Person i) (G.V.Task j)) <> 0) with
-        | None -> acc, acc' 
+        | None -> acc, acc'
         | Some (_,e) -> w :: acc, e :: acc') |> function
   | [], [] -> None
   | ms -> Some ms
 
+let diff events events' =
+  let left = Set.diff events events' in
+  let right = Set.diff events' events in
+  let to_str e = Value.pps () e in
+  let is_unique other ev =
+    not (Set.exists other ~f:(fun ev' -> to_str ev = to_str ev')) in
+  Set.filter ~f:(is_unique right) left,
+  Set.filter ~f:(is_unique left) right
+
 let match_events rule insn events events' =
   match Rule.match_field rule `Insn insn with
   | false -> None
-  | true -> 
-    let left = Set.diff events events' in
-    let right = Set.diff events' events in
+  | true ->
+    let left, right = diff events events' in
     match Rule.(is_empty (left rule)), Rule.(is_empty (right rule)) with
     | true, true -> Some (Set.to_list events, Set.to_list events')
     | true, _ -> match_right rule right
     | _, true -> match_left rule left
     | _ -> match_both rule left right
 
-let remove what from = 
+let remove what from =
   let not_exists e = not (List.exists what ~f:(fun e' -> e = e')) in
-  Set.filter ~f:not_exists from 
+  Set.filter ~f:not_exists from
 
-let remove_matched events events' (ms, ms') = 
+let remove_matched events events' (ms, ms') =
   remove ms events, remove ms' events'
 
-let denied rules insn events events' =   
+let denied rules insn events events' =
   let rec loop acc rules (evs,evs') = match rules with
     | [] -> acc
     | rule :: rls ->
       match match_events rule insn evs evs' with
       | None -> loop acc rls (evs,evs')
-      | Some matched -> 
-        let acc' = 
+      | Some matched ->
+        let acc' =
           if Rule.action rule = Rule.skip then acc
           else (rule, matched) :: acc in
-        remove_matched evs evs' matched |> 
+        remove_matched evs evs' matched |>
         loop acc' rls in
-  loop [] (List.rev rules) (events, events') 
+  loop [] (List.rev rules) (events, events')

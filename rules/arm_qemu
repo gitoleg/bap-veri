@@ -1,0 +1,14 @@
+# skipping context switch events
+SKIP .* 'context-switch.*' ''
+
+SKIP .* '' '.F => .*'
+SKIP .* '' '.F <= .*'
+SKIP .* '.F <= .*' ''
+SKIP .* '.F => .*' ''
+SKIP .* 'GE <= .*' ''
+
+SKIP .* 'PC => .*' ''
+
+# Last rules means that every event should has a pair
+DENY .* '.*' ''
+DENY .* '' '.*'
