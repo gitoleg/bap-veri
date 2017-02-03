@@ -1,0 +1,25 @@
+# we completle ignore the following because bil is either empty,
+# either contains unknown expressions or special statements
+
+# skipping modload events
+SKIP .* '.*: .* - .*' ''
+
+# skipping context switch events
+SKIP .* 'context-switch.*' ''
+
+# skipping flags
+SKIP .* '.FLAGS.*' ''
+SKIP .* '' '.F => .*'
+SKIP .* '' '.F <= .*'
+
+# to solve differences in bitwidth
+SKIP .* '(.*) => (.*):.*' '\1 => \2:.*'
+SKIP .* '(.*) <= (.*):.*' '\1 <= \2:.*'
+
+# qemu contains some addition readings even in write operations
+SKIP MOV.* '.* => .*' ''
+SKIP CMOV.* '.* => .*' ''
+
+# Last rules means that every event should has a pair
+DENY .* '.*' ''
+DENY .* '' '.*'
