@@ -8,7 +8,6 @@ one is a set, that was filled during execution of `code_exec` event, by
 emitting artificial events.
 
 
-
 ##Build and install
 ```
 oasis setup
