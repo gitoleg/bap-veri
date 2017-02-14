@@ -2,7 +2,7 @@
 
 bash -ex .travis-opam.sh
 eval `opam config env`
-opam install bap -y
+opam install piqi -y
 
 # TODO should I use a current user ?
 USER=${TRAVIS_REPO_SLUG%/*}
