@@ -1,5 +1,5 @@
 language: c
-script: bash -ex run_binarie.sh
+script: bash -ex run_binaries.sh
 sudo: false
 cache:
   directories:
