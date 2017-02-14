@@ -1,0 +1,31 @@
+language: c
+script: bash -ex run_binarie.sh
+sudo: false
+cache:
+  directories:
+    - $HOME/.opam
+    - $HOME/factory
+  before_cache:
+    - rm -rf $HOME/.opam/log
+
+addons:
+  apt:
+    sources:
+    - avsm
+    packages:
+    - m4
+    - libpcre3-dev
+    - libgmp-dev
+    - ocaml
+    - ocaml-base
+    - ocaml-base-nox
+    - ocaml-native-compilers
+    - ocaml-nox
+    - autoconf
+    - libtool
+    - protobuf-compiler
+    - libprotobuf-dev
+    - libboost-filesystem-dev
+    - libcrypto++-dev
+env:
+  - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true PACKAGE=bap OCAML_VERSION=latest TESTS=false
