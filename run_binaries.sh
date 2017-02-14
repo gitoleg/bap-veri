@@ -14,6 +14,7 @@ cd factory
 get_source() {
     if [ ! -e $1 ]; then
         git clone https://github.com/BinaryAnalysisPlatform/$1.git
+    fi
 }
 
 # install bap-frames
