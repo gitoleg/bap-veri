@@ -9,9 +9,9 @@ opam install bap-std --deps-only
 opam install bap-std -v
 
 #TODO: rm this
-# opam_lib=$(opam config var prefix)/lib
-# rm -rf $opam_lib/bap-frames $opam_lib/bap-plugin-frames
-# rm -rf $opam_lib/bap/frames.plugin
+opam_lib=$(opam config var prefix)/lib
+rm -rf $opam_lib/bap-frames $opam_lib/bap-plugin-frames
+rm -rf $opam_lib/bap/frames.plugin
 
 opam install bap-frames
 
@@ -108,10 +108,10 @@ run_with_qemu() {
 }
 
 run_with_pin() {
-    echo "launch: pin -injection child -t obj-intel64/bpt.so -o $1.frames -- $1 --help"
+    echo "launch: pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help"
     cd $pintrace_dir
-    pin -injection child -t obj-intel64/bpt.so -o $3 -- $2 --help
-    cp $3 ../
+    pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help
+    cp $2 ../
     cd ..
 }
 
@@ -167,7 +167,7 @@ for i in 0 ; do
     if [ $tool == "qemu" ]; then
         run_with_qemu $arch $file $trace
     else
-        run_with_pin $arch $file $trace
+        run_with_pin $file $trace
     fi
 
     run_veri $arch $trace
