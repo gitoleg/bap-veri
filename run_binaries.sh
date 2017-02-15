@@ -67,7 +67,7 @@ pkg_make_install bap-veri
 results_repo=https://github.com/gitoleg/veri-results
 results="veri-results"
 rm -rf $results
-git clone $result_repo
+git clone $results_repo
 
 qemu_dir="qemu"
 wget_pkg $qemu_dir \
@@ -161,7 +161,7 @@ deploy () {
 
     #form message with files that added
     git add .
-    git commit -m ""
+    git commit -m "test msg"
 
     ENCRYPTED_KEY_VAR="encrypted_${ENCRYPTION_LABEL}_key"
     ENCRYPTED_IV_VAR="encrypted_${ENCRYPTION_LABEL}_iv"
@@ -200,4 +200,5 @@ for i in 0 ; do
     cat $veri_out
     mkdir -p "$results/$dst"
     cp $veri_out "$results/$dst"
+    deploy
 done
