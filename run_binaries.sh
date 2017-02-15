@@ -23,8 +23,8 @@ cd $workdir
 
 # getting sources
 get_source() {
-    if [ ! -e $2 ]; then
-        git clone https://github.com/$1/$2.git
+    if [ ! -e $1 ]; then
+        git clone https://github.com/BinaryAnalysisPlatform/$1.git
     fi
 }
 
@@ -48,13 +48,12 @@ wget_pkg () {
     fi
 }
 
-get_source BinaryAnalysisPlatform bap-frames
-get_source BinaryAnalysisPlatform bap-veri
-get_source BinaryAnalysisPlatform bap-pintraces
-get_source BinaryAnalysisPlatform arm-binaries
-get_source BinaryAnalysisPlatform x86-binaries
-get_source BinaryAnalysisPlatform x86_64-binaries
-get_source gitoleg veri-results
+get_source bap-frames
+get_source bap-veri
+get_source bap-pintraces
+get_source arm-binaries
+get_source x86-binaries
+get_source x86_64-binaries
 
 # install libtrace
 cd bap-frames/libtrace
@@ -67,6 +66,8 @@ pkg_make_install bap-veri
 
 results_repo=https://github.com/gitoleg/veri-results
 results="veri-results"
+rm -rf $results
+git clone $result_repo
 
 qemu_dir="qemu"
 wget_pkg $qemu_dir \
@@ -171,10 +172,11 @@ deploy () {
     eval `ssh-agent -s`
     ssh-add deploy_key
 
-    git push $SSH_REPO $TARGET_BRANCH
+    # DO i need some other branch ?
+    git push $results_repo master
 }
 
-#run first 1 files in diff
+# run first 1 files in diff
 # TODO: commit a file(s) every e.g. 10 iterations
 for i in 0 ; do
     file=${files[i]}

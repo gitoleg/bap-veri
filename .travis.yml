@@ -37,5 +37,6 @@ addons:
     - libprotobuf-dev
     - libboost-filesystem-dev
     - libcrypto++-dev
+    - g++-4.4
 env:
   - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true OCAML_VERSION=latest TESTS=false
