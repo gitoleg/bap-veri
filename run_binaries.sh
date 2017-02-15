@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -ex
+
 bash -ex .travis-opam.sh
 eval `opam config env`
 
@@ -85,6 +87,7 @@ cd $pintrace_dir
 make
 cd ..
 
+# TODO : add a second file - with stat
 run_veri() {
     veri_out=$2.txt
     case $1 in
@@ -132,13 +135,14 @@ calculating_diff() {
                         files[$i]=$file
                         let i=i+1
                     fi
+                    # TODO : temp!
                     if [ $i -eq 10 ]; then
                         return 0
                     fi
 
                 done
             fi
-        done
+        dones
     done
 }
 
@@ -146,16 +150,15 @@ calculating_diff > /dev/null
 echo "diff size is $i"
 
 arch_of_path() {
-    ok_arm=$(echo $1 | grep  arm)
-    ok_x86_64=$(echo $1 | grep x86_64)
-    if [ ! -z $ok_arm ]; then
-        arch="arm"
-    else
-        if [ ! -z $ok_x86_64 ]; then
-            arch="x86_64"
-        else arch="i386"
-        fi
-    fi
+    case $1 in
+        *arm*) arch=arm
+               ;;
+        *x86_64*) arch=x86_64
+                  ;;
+        *x86*) arch=x86
+               ;;
+        *)  echo "didn't find rules for $1 arch"
+    esac
 }
 
 deploy () {
