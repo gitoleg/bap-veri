@@ -89,7 +89,8 @@ cd ..
 
 # TODO : add a second file - with stat
 run_veri() {
-    veri_out=$2.txt
+    veri_sum=$(basename $2).sum
+    veri_stat=$(basename $2).stat
     case $1 in
         arm) rules_file="bap-veri/rules/arm_qemu"
              ;;
@@ -99,7 +100,7 @@ run_veri() {
                 ;;
         *) echo "didn't find rules for $1 arch"
     esac
-    bap-veri --show_stat --output=$veri_out --rules $ruls_file $2
+    bap-veri --show_stat --output=$veri_sum --rules $ruls_file $2 > $veri_stat
 }
 
 run_qemu() {
@@ -125,7 +126,7 @@ x86_64_bin="x86_64-binaries/elf"
 
 calculating_diff() {
     i=0
-    for arch in $arm_bin $x86_bin $x86_64_bin; do
+    for arch in $x86_64_bin  $x86_bin $arm_bin;  do
         for subdir in $subdirs; do
             src_path="$arch/$subdir"
             if [ -e $src_path ]; then
@@ -209,7 +210,7 @@ for i in 0 ; do
     dst=$(dirname $file)
     cat $veri_out
     mkdir -p "$results/$dst"
-    cp $veri_out "$results/$dst"
+    cp $veri_stat $veri_sum "$results/$dst"
     deploy
 
 done
