@@ -8,10 +8,9 @@ opam install conf-bap-llvm
 opam install bap-std --deps-only
 opam install bap-std -v
 
-#TODO: rm this
+#TODO: rm this ??
 opam_lib=$(opam config var prefix)/lib
-rm -rf $opam_lib/bap-frames $opam_lib/bap-plugin-frames
-rm -rf $opam_lib/bap/frames.plugin
+rm -rf $opam_lib/{bap-frames,bap-plugin-frames,bap/frames.plugin}
 
 opam install bap-frames
 
@@ -34,8 +33,16 @@ pkg_make_install() {
         cd $1
         oasis setup
         ./configure --prefix=`opam config var prefix`
-        make && make reinstall
+        make && make install
         cd ..
+    fi
+}
+
+wget_pkg () {
+    if [ ! -e $1 ]; then
+        mkdir $1
+        wget $2
+        tar xzf $(basename $2) -C $1
     fi
 }
 
@@ -52,30 +59,24 @@ cd bap-frames/libtrace
 make && sudo make install
 cd $workdir
 
-# install bap-frames bap-veri
-# pkg_make_install bap-frames
+# install bap-veri
 pkg_make_install bap-veri
 
 git clone https://github.com/gitoleg/veri-results
 results="veri-results"
 
 qemu_dir="qemu"
-if [ ! -e $qemu_dir ]; then
-    wget "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
-    mkdir $qemu_dir
-    tar xzf qemu-tracewrap-ubuntu-14.04.4-LTS.tgz -C $qemu_dir
-fi
+wget_pkg $qemu_dir \
+         "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
 qemu_dir="qemu/bin"
 
 pinroot="pinroot"
-if [ ! -e $pinroot ]; then
-    mkdir $pinroot
-    wget "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
-    tar xzf pin-2.14-71313-gcc.4.4.7-linux.tar.gz -C $pinroot
-fi
-export PIN_ROOT=$HOME/$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
+wget_pkg $pinroot \
+         "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
+
+export PIN_ROOT=$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
 export PATH=$PATH:$PIN_ROOT
-echo 'export PIN_ROOT=$HOME/$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
+echo 'export PIN_ROOT=$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
 echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
 
 pintrace_dir="bap-pintraces"
@@ -98,13 +99,9 @@ run_veri() {
 }
 
 run_with_qemu() {
+    echo "launch: $qemu_dir/qemu-$1 -tracefile $3 $2 --help"
     ./$qemu_dir/qemu-$1 -tracefile $3 $2 --help
     cp $3 ../
-    run_veri $1 $name
-    dst=$(dirname $2)
-    cat $veri_out
-    mkdir -p "$results/$dst"
-    cp $veri_out "$results/$dst"
 }
 
 run_with_pin() {
