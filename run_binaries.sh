@@ -4,6 +4,7 @@ bash -ex .travis-opam.sh
 eval `opam config env`
 
 opam install piqi -y
+opam install conf-bap-llvm
 opam install bap --deps-only
 opam install bap -v
 
@@ -80,7 +81,7 @@ run_veri() {
 
 run_qemu() {
     name=$(basename $2).frames
-    ./$qemu_dir/qemu-$1 -tracefile $name.frames $2
+    ./$qemu_dir/qemu-$1 -tracefile $name.frames $2 --help
     run_veri $1 $name
     dst=$(dirname $2)
     cat $veri_out
@@ -131,6 +132,7 @@ arch_of_path() {
 }
 
 #run first 1 files in diff
+# TODO: commit a file(s) every e.g. 10 iterations
 for i in 0 ; do
     file=${files[i]}
 
