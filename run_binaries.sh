@@ -85,6 +85,15 @@ export PATH=$PATH:$PIN_ROOT
 echo 'export PIN_ROOT=$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
 echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
 
+# TODO: tmp
+if [ ! -e $PIN_ROOT/pin ]; then
+    echo "no pin!!"
+    ls $pinroot
+    echo "....."
+    ls $PIN_ROOT
+    exit 1
+fi
+
 pintrace_dir="bap-pintraces"
 cd $pintrace_dir
 make
