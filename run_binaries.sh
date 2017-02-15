@@ -14,9 +14,6 @@ rm -rf $opam_lib/{bap-frames,bap-plugin-frames,bap/frames.plugin}
 
 opam install bap-frames
 
-# TODO should I use a current user ?
-USER=${TRAVIS_REPO_SLUG%/*}
-
 workdir=$HOME/factory
 mkdir -p $workdir
 cd $workdir
@@ -127,13 +124,13 @@ calculating_diff() {
     i=0
     for arch in $arm_bin $x86_bin $x86_64_bin; do
         for subdir in $subdirs; do
-            src_path="$arch/$subdir"
+            src_path="$arch/$subdir"  > /dev/null
             if [ -e $src_path ]; then
                 for file in $src_path/*; do
-                    res="$results/$file.frames"
+                    res="$results/$file.frames"  > /dev/null
                     if [ ! -e $res ]; then
-                        files[$i]=$file
-                        let i=i+1
+                        files[$i]=$file > /dev/null
+                        let i=i+1 > /dev/null
                     fi
                 done
             fi
@@ -162,23 +159,25 @@ deploy () {
     git config user.name "Travis CI"
     git config user.email "$COMMIT_AUTHOR_EMAIL"
 
-    #check if [ -z `git diff --exit-code` ];
+    new_files=$(git ls-files --others --exclude-standard)
+    changes=$(git diff)
+    if [ ! -z "$new_files$changes" ]; then
 
-    #form message with files that added
-    git add .
-    git commit -m "test msg"
+        git add .
+        git commit -m "added files : $new_files"
 
-    ENCRYPTED_KEY_VAR="encrypted_${ENCRYPTION_LABEL}_key"
-    ENCRYPTED_IV_VAR="encrypted_${ENCRYPTION_LABEL}_iv"
-    ENCRYPTED_KEY=${!ENCRYPTED_KEY_VAR}
-    ENCRYPTED_IV=${!ENCRYPTED_IV_VAR}
-    openssl aes-256-cbc -K $ENCRYPTED_KEY -iv $ENCRYPTED_IV -in deploy_key.enc -out deploy_key -d
-    chmod 600 deploy_key
-    eval `ssh-agent -s`
-    ssh-add deploy_key
+        ENCRYPTED_KEY_VAR="encrypted_${ENCRYPTION_LABEL}_key"
+        ENCRYPTED_IV_VAR="encrypted_${ENCRYPTION_LABEL}_iv"
+        ENCRYPTED_KEY=${!ENCRYPTED_KEY_VAR}
+        ENCRYPTED_IV=${!ENCRYPTED_IV_VAR}
+        openssl aes-256-cbc -K $ENCRYPTED_KEY -iv $ENCRYPTED_IV -in deploy_key.enc -out deploy_key -d
+        chmod 600 deploy_key
+        eval `ssh-agent -s`
+        ssh-add deploy_key
 
-    # DO i need some other branch ?
-    git push $results_repo master
+        # DO i need some other branch ?
+        git push $results_repo master
+    fi
 }
 
 # run first 1 files in diff
