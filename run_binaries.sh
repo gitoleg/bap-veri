@@ -139,10 +139,9 @@ calculating_diff() {
                     if [ $i -eq 10 ]; then
                         return 0
                     fi
-
                 done
             fi
-        dones
+        done
     done
 }
 
