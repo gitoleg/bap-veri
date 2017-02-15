@@ -76,14 +76,16 @@ wget_pkg $qemu_dir \
          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
 qemu_dir="qemu/bin"
 
-pinroot="pinroot"
+cd $HOME
+pinroot="opt"
 wget_pkg $pinroot \
          "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
 
-export PIN_ROOT=$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
+export PIN_ROOT=$HOME/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
 export PATH=$PATH:$PIN_ROOT
-echo 'export PIN_ROOT=$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
+echo 'export PIN_ROOT=$HOME/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
 echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
+cd $workdir
 
 # TODO: tmp
 if [ ! -e $PIN_ROOT/pin ]; then
@@ -129,38 +131,6 @@ run_pin() {
     cd ..
 }
 
-# calculating diff
-
-subdirs="binutils coreutils findutils"
-arm_bin="arm-binaries"
-x86_bin="x86-binaries/elf"
-x86_64_bin="x86_64-binaries/elf"
-
-calculating_diff() {
-    i=0
-    for arch in $x86_64_bin  $x86_bin $arm_bin;  do
-        for subdir in $subdirs; do
-            src_path="$arch/$subdir"
-            if [ -e $src_path ]; then
-                for file in $src_path/*; do
-                    res="$results/$file.frames"
-                    if [ ! -e $res ]; then
-                        files[$i]=$file
-                        let i=i+1
-                    fi
-                    # TODO : temp!
-                    if [ $i -eq 10 ]; then
-                        return 0
-                    fi
-                done
-            fi
-        done
-    done
-}
-
-calculating_diff > /dev/null
-echo "diff size is $i"
-
 arch_of_path() {
     case $1 in
         *arm*) arch=arm
@@ -199,30 +169,57 @@ deploy () {
     fi
 }
 
-# run first 1 files in diff
-# TODO: commit a file(s) every e.g. 10 iterations
-for i in 0 ; do
-    file=${files[i]}
 
-    arch_of_path $file
-    if [ $arch == "x86_64" ]; then
-        tool="pin"
-    else
-        tool="qemu"
-    fi
 
-    trace=$(basename $file).frames
-    if [ $tool == "qemu" ]; then
-        run_qemu $arch $file $trace
-    else
-        run_pin $file $trace
-    fi
+subdirs="binutils coreutils findutils"
+arm_bin="arm-binaries"
+x86_bin="x86-binaries/elf"
+x86_64_bin="x86_64-binaries/elf"
 
-    run_veri $arch $trace
-    dst=$(dirname $file)
-    cat $veri_out
-    mkdir -p "$results/$dst"
-    cp $veri_stat $veri_sum "$results/$dst"
-    deploy
+i=0
+for arch in $x86_64_bin  $x86_bin $arm_bin;  do
+    for subdir in $subdirs; do
+        src_path="$arch/$subdir"
+        if [ -e $src_path ]; then
+            for file in $src_path/*; do
+                res="$results/$file.frames"
+                if [ ! -e $res ]; then
 
+                    # TODO : temp - for test purposes only!
+                    let i=i+1
+                    if [ $i -eq 10 ]; then
+                        return 0
+                    fi
+
+                    arch_of_path $file
+                    if [ $arch == "x86_64" ]; then
+                        tool="pin"
+                    else
+                        tool="qemu"
+                    fi
+
+                    trace=$(basename $file).frames
+                    if [ $tool == "qemu" ]; then
+                        run_qemu $arch $file $trace
+                    else
+                        run_pin $file $trace
+                    fi
+
+                    run_veri $arch $trace
+                    dst=$(dirname $file)
+                    cat $veri_out
+                    mkdir -p "$results/$dst"
+                    cp $veri_stat $veri_sum "$results/$dst"
+
+                    let c=$i%10
+                    if [ $c -eq 0 ]; then
+                        deploy
+                    fi
+
+                fi
+            done
+        fi
+    done
 done
+
+deploy
