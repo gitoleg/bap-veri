@@ -124,14 +124,18 @@ calculating_diff() {
     i=0
     for arch in $arm_bin $x86_bin $x86_64_bin; do
         for subdir in $subdirs; do
-            src_path="$arch/$subdir"  > /dev/null
+            src_path="$arch/$subdir"
             if [ -e $src_path ]; then
                 for file in $src_path/*; do
-                    res="$results/$file.frames"  > /dev/null
+                    res="$results/$file.frames"
                     if [ ! -e $res ]; then
-                        files[$i]=$file > /dev/null
-                        let i=i+1 > /dev/null
+                        files[$i]=$file
+                        let i=i+1
                     fi
+                    if [ $i -eq 10 ]; then
+                        return 0
+                    fi
+
                 done
             fi
         done
