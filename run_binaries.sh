@@ -21,27 +21,33 @@ get_source() {
     fi
 }
 
-# install bap-frames
+# install bap-frames and libtrace
 get_source "bap-frames"
 cd bap-frames/libtrace
 ./autogen.sh
 ./configure
 make
-make install
-cd ../..
+sudo make install
+cd ../
+oasis setup
+./configure --prefix=`opam config var prefix`
+make && make reinstall
+cd ../
 
 # install bap-veri
 get_source "bap-veri"
 cd bap-veri
 oasis setup
 /configure --prefix=`opam config var prefix`
-make
-make install
+make && make reinstall
 cd ..
 
 get_source "arm-binaries"
 get_source "x86-binaries"
 get_source "x86_64-binaries"
+
+git clone https://github.com/gitoleg/veri-results
+results="veri-results"
 
 qemu_dir="qemu"
 if [ ! -e $qemu_dir ]; then
@@ -51,8 +57,6 @@ if [ ! -e $qemu_dir ]; then
 fi
 qemu_dir="qemu/bin"
 
-# TODO: just tmp
-mkdir -p results
 
 # TODO: add to cache   - $HOME/opt
 # pintrace_dir="pintrace"
@@ -74,9 +78,9 @@ run_veri() {
              ;;
         x86_64) rules_file="bap-veri/rules/x86"
                 ;;
-        *) echo "didn't find rules for $1 arch "
+        *) echo "didn't find rules for $1 arch"
     esac
-    bap-veri --show_stat $2 --rules $ruls_file > $veri_out
+    bap-veri --show_stat --output=$veri_out --rules $ruls_file $2
 }
 
 run_qemu() {
@@ -97,7 +101,6 @@ run_pin() {
 
 # calculating diff
 
-results="results"
 subdirs="binutils coreutils findutils"
 arm_bin="arm-binaries"
 x86_bin="x86-binaries/elf"

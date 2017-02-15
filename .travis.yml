@@ -1,6 +1,6 @@
 language: c
 script: bash -ex run_binaries.sh
-sudo: false
+sudo: true
 cache:
   directories:
     - $HOME/.opam
