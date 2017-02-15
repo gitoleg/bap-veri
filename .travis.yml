@@ -13,9 +13,19 @@ addons:
     sources:
     - avsm
     packages:
+    - camlp4
+    - camlp4-extra
+    - clang
+    - curl
+    - libcurl4-gnutls-dev
+    - libgmp-dev
+    - libssl-dev
+    - libzip-dev
+    - llvm
+    - llvm-3.4-dev
     - m4
     - libpcre3-dev
-    - libgmp-dev
+    - aspcud
     - ocaml
     - ocaml-base
     - ocaml-base-nox
@@ -28,4 +38,4 @@ addons:
     - libboost-filesystem-dev
     - libcrypto++-dev
 env:
-  - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true PACKAGE=bap OCAML_VERSION=latest TESTS=false
+  - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true OCAML_VERSION=latest TESTS=false
