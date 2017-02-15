@@ -6,7 +6,7 @@ bash -ex .travis-opam.sh
 eval `opam config env`
 
 apt-cache show libprotobuf-dev
-
+sudo apt-get install libprotobuf-dev=2.5.0-9ubuntu1
 opam install piqi -y
 opam install conf-bap-llvm
 opam install bap-std --deps-only
