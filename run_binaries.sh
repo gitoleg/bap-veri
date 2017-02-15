@@ -20,6 +20,9 @@ workdir=$HOME/factory
 mkdir -p $workdir
 cd $workdir
 
+#TODO: rm this
+rm -r pinroot
+
 # getting sources
 get_source() {
     if [ ! -e $1 ]; then
