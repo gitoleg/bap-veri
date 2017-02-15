@@ -9,9 +9,9 @@ opam install bap-std --deps-only
 opam install bap-std -v
 
 #TODO: rm this
-opam_lib=$(opam config var prefix)/lib
-rm -rf $opam_lib/bap-frames $opam_lib/bap-plugin-frames
-rm -rf $opam_lib/bap/frames.plugin
+# opam_lib=$(opam config var prefix)/lib
+# rm -rf $opam_lib/bap-frames $opam_lib/bap-plugin-frames
+# rm -rf $opam_lib/bap/frames.plugin
 
 opam install bap-frames
 
@@ -71,7 +71,7 @@ pinroot="pinroot"
 if [ ! -e $pinroot ]; then
     mkdir $pinroot
     wget "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
-    tar xvz pin-2.14-71313-gcc.4.4.7-linux.tar.gz -C $pinroot
+    tar xzf pin-2.14-71313-gcc.4.4.7-linux.tar.gz -C $pinroot
 fi
 export PIN_ROOT=$HOME/$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
 export PATH=$PATH:$PIN_ROOT
