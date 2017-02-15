@@ -14,6 +14,7 @@ USER=${TRAVIS_REPO_SLUG%/*}
 mkdir -p factory
 cd factory
 
+
 # getting sources
 get_source() {
     if [ ! -e $1 ]; then
@@ -21,30 +22,31 @@ get_source() {
     fi
 }
 
-# install bap-frames and libtrace
+pkg_make_install() {
+    if ocamlfind query $1 2>/dev/null ; then
+        cd $1
+        oasis setup
+        ./configure --prefix=`opam config var prefix`
+        make && make reinstall
+        cd ..
+    fi
+}
+
 get_source "bap-frames"
-cd bap-frames/libtrace
-./autogen.sh
-./configure
-make
-sudo make install
-cd ../
-oasis setup
-./configure --prefix=`opam config var prefix`
-make && make reinstall
-cd ../
-
-# install bap-veri
 get_source "bap-veri"
-cd bap-veri
-oasis setup
-./configure --prefix=`opam config var prefix`
-make && make reinstall
-cd ..
-
 get_source "arm-binaries"
 get_source "x86-binaries"
 get_source "x86_64-binaries"
+
+# install libtrace
+cd bap-frames/libtrace
+./autogen.sh && ./configure
+make && sudo make install
+cd ../..
+
+# install bap-frames bap-veri
+pkg_make_install bap-frames
+pkg_make_install bap-veri
 
 git clone https://github.com/gitoleg/veri-results
 results="veri-results"
@@ -106,6 +108,7 @@ arm_bin="arm-binaries"
 x86_bin="x86-binaries/elf"
 x86_64_bin="x86_64-binaries/elf"
 
+i=0
 for arch in $arm_bin $x86_bin $x86_64_bin; do
     for subdir in $subdirs; do
         src_path="$arch/$subdir"
