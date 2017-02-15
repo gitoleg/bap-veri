@@ -18,9 +18,9 @@ opam install bap-frames
 # TODO should I use a current user ?
 USER=${TRAVIS_REPO_SLUG%/*}
 
-mkdir -p factory
-cd factory
-
+workdir=$HOME/factory
+mkdir -p $workdir
+cd $workdir
 
 # getting sources
 get_source() {
@@ -41,6 +41,7 @@ pkg_make_install() {
 
 get_source "bap-frames"
 get_source "bap-veri"
+get_source "bap-pintraces"
 get_source "arm-binaries"
 get_source "x86-binaries"
 get_source "x86_64-binaries"
@@ -49,7 +50,7 @@ get_source "x86_64-binaries"
 cd bap-frames/libtrace
 ./autogen.sh && ./configure
 make && sudo make install
-cd ../..
+cd $workdir
 
 # install bap-frames bap-veri
 # pkg_make_install bap-frames
@@ -66,17 +67,21 @@ if [ ! -e $qemu_dir ]; then
 fi
 qemu_dir="qemu/bin"
 
+pinroot="pinroot"
+if [ ! -e $pinroot ]; then
+    mkdir $pinroot
+    wget "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
+    tar xvz pin-2.14-71313-gcc.4.4.7-linux.tar.gz -C $pinroot
+fi
+export PIN_ROOT=$HOME/$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
+export PATH=$PATH:$PIN_ROOT
+echo 'export PIN_ROOT=$HOME/$workdir/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
+echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
 
-# TODO: add to cache   - $HOME/opt
-# pintrace_dir="pintrace"
-# if [ ! -e $qemu_dir ]; then
-#     wget "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
-#     tar xvz pin-2.14-71313-gcc.4.4.7-linux.tar.gz -C $HOME/opt
-# fi
-# export PIN_ROOT=$HOME/opt/pin-2.14-71313-gcc.4.4.7-linux
-# export PATH=$PATH:$PIN_ROOT
-# echo 'export PIN_ROOT=$HOME/opt/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
-# echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
+pintrace_dir="bap-pintraces"
+cd $pintrace_dir
+make
+cd ..
 
 run_veri() {
     veri_out=$2.txt
@@ -92,9 +97,9 @@ run_veri() {
     bap-veri --show_stat --output=$veri_out --rules $ruls_file $2
 }
 
-run_qemu() {
-    name=$(basename $2).frames
-    ./$qemu_dir/qemu-$1 -tracefile $name.frames $2 --help
+run_with_qemu() {
+    ./$qemu_dir/qemu-$1 -tracefile $3 $2 --help
+    cp $3 ../
     run_veri $1 $name
     dst=$(dirname $2)
     cat $veri_out
@@ -102,10 +107,12 @@ run_qemu() {
     cp $veri_out "$results/$dst"
 }
 
-# TODO: use basename for frames file ?
-run_pin() {
-    echo "launch: pin -injection child -t obj-intel64/bpt.so -o $1.frames -- $1 --help "
-#    pin -injection child -t obj-intel64/bpt.so -o $1.frames -- $1 --help
+run_with_pin() {
+    echo "launch: pin -injection child -t obj-intel64/bpt.so -o $1.frames -- $1 --help"
+    cd $pintrace_dir
+    pin -injection child -t obj-intel64/bpt.so -o $3 -- $2 --help
+    cp $3 ../
+    cd ..
 }
 
 # calculating diff
@@ -124,7 +131,7 @@ for arch in $arm_bin $x86_bin $x86_64_bin; do
                 res="$results/$file.frames"
                 if [ ! -e $res ]; then
                     files[$i]=$file
-                    i=$i+1
+                    let i=i+1
                 fi
             done
         fi
@@ -156,9 +163,16 @@ for i in 0 ; do
         tool="qemu"
     fi
 
+    trace=$(basename $file).frames
     if [ $tool == "qemu" ]; then
-        run_qemu $arch $file
+        run_with_qemu $arch $file $trace
     else
-        run_pin $arch $file
+        run_with_pin $arch $file $trace
     fi
+
+    run_veri $arch $trace
+    dst=$(dirname $file)
+    cat $veri_out
+    mkdir -p "$results/$dst"
+    cp $veri_out "$results/$dst"
 done
