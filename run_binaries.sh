@@ -5,7 +5,7 @@ set -ex
 bash -ex .travis-opam.sh
 eval `opam config env`
 
-apt-cache search libprotobuf-dev
+apt-cache show libprotobuf-dev
 
 opam install piqi -y
 opam install conf-bap-llvm
