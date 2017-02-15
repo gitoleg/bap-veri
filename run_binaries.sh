@@ -202,7 +202,8 @@ for arch in $x86_64_bin  $x86_bin $arm_bin;  do
                     if [ $tool == "qemu" ]; then
                         run_qemu $arch $file $trace
                     else
-                        run_pin $file $trace
+                        tmp=$PWD/$file
+                        run_pin $tmp $trace
                     fi
 
                     run_veri $arch $trace
