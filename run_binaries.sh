@@ -8,6 +8,13 @@ opam install conf-bap-llvm
 opam install bap-std --deps-only
 opam install bap-std -v
 
+#TODO: rm this
+opam_lib=$(opam config var prefix)/lib
+rm -rf $opam_lib/bap-frames $opam_lib/bap-plugin-frames
+rm -rf $opam_lib/bap/frames.plugin
+
+opam install bap-frames
+
 # TODO should I use a current user ?
 USER=${TRAVIS_REPO_SLUG%/*}
 
@@ -45,7 +52,7 @@ make && sudo make install
 cd ../..
 
 # install bap-frames bap-veri
-pkg_make_install bap-frames
+# pkg_make_install bap-frames
 pkg_make_install bap-veri
 
 git clone https://github.com/gitoleg/veri-results
