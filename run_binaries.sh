@@ -5,8 +5,8 @@ eval `opam config env`
 
 opam install piqi -y
 opam install conf-bap-llvm
-opam install bap --deps-only
-opam install bap -v
+opam install bap-std --deps-only
+opam install bap-std -v
 
 # TODO should I use a current user ?
 USER=${TRAVIS_REPO_SLUG%/*}
@@ -38,7 +38,7 @@ cd ../
 get_source "bap-veri"
 cd bap-veri
 oasis setup
-/configure --prefix=`opam config var prefix`
+./configure --prefix=`opam config var prefix`
 make && make reinstall
 cd ..
 
