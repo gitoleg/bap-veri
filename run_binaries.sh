@@ -23,11 +23,13 @@ cd $workdir
 
 # getting sources
 get_source() {
-    if [ ! -e $1 ]; then
-        git clone https://github.com/BinaryAnalysisPlatform/$1.git
+    if [ ! -e $2 ]; then
+        git clone https://github.com/$1/$2.git
     fi
 }
 
+# TODO : do I really need it ? it is used for bap-veri only
+# and it's possible to install it through opam
 pkg_make_install() {
     if ocamlfind query $1 2>/dev/null ; then
         cd $1
@@ -46,12 +48,13 @@ wget_pkg () {
     fi
 }
 
-get_source "bap-frames"
-get_source "bap-veri"
-get_source "bap-pintraces"
-get_source "arm-binaries"
-get_source "x86-binaries"
-get_source "x86_64-binaries"
+get_source BinaryAnalysisPlatform bap-frames
+get_source BinaryAnalysisPlatform bap-veri
+get_source BinaryAnalysisPlatform bap-pintraces
+get_source BinaryAnalysisPlatform arm-binaries
+get_source BinaryAnalysisPlatform x86-binaries
+get_source BinaryAnalysisPlatform x86_64-binaries
+get_source gitoleg veri-results
 
 # install libtrace
 cd bap-frames/libtrace
@@ -62,7 +65,7 @@ cd $workdir
 # install bap-veri
 pkg_make_install bap-veri
 
-git clone https://github.com/gitoleg/veri-results
+results_repo=https://github.com/gitoleg/veri-results
 results="veri-results"
 
 qemu_dir="qemu"
@@ -98,13 +101,13 @@ run_veri() {
     bap-veri --show_stat --output=$veri_out --rules $ruls_file $2
 }
 
-run_with_qemu() {
+run_qemu() {
     echo "launch: $qemu_dir/qemu-$1 -tracefile $3 $2 --help"
     ./$qemu_dir/qemu-$1 -tracefile $3 $2 --help
     cp $3 ../
 }
 
-run_with_pin() {
+run_pin() {
     echo "launch: pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help"
     cd $pintrace_dir
     pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help
@@ -148,6 +151,29 @@ arch_of_path() {
     fi
 }
 
+deploy () {
+    cd $results
+    git config user.name "Travis CI"
+    git config user.email "$COMMIT_AUTHOR_EMAIL"
+
+    #check if [ -z `git diff --exit-code` ];
+
+    #form message with files that added
+    git add .
+    git commit -m ""
+
+    ENCRYPTED_KEY_VAR="encrypted_${ENCRYPTION_LABEL}_key"
+    ENCRYPTED_IV_VAR="encrypted_${ENCRYPTION_LABEL}_iv"
+    ENCRYPTED_KEY=${!ENCRYPTED_KEY_VAR}
+    ENCRYPTED_IV=${!ENCRYPTED_IV_VAR}
+    openssl aes-256-cbc -K $ENCRYPTED_KEY -iv $ENCRYPTED_IV -in deploy_key.enc -out deploy_key -d
+    chmod 600 deploy_key
+    eval `ssh-agent -s`
+    ssh-add deploy_key
+
+    git push $SSH_REPO $TARGET_BRANCH
+}
+
 #run first 1 files in diff
 # TODO: commit a file(s) every e.g. 10 iterations
 for i in 0 ; do
@@ -162,9 +188,9 @@ for i in 0 ; do
 
     trace=$(basename $file).frames
     if [ $tool == "qemu" ]; then
-        run_with_qemu $arch $file $trace
+        run_qemu $arch $file $trace
     else
-        run_with_pin $file $trace
+        run_pin $file $trace
     fi
 
     run_veri $arch $trace
