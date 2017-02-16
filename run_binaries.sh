@@ -69,6 +69,9 @@ results="veri-results"
 rm -rf $results
 git clone $results_repo
 
+
+rm -r qemu
+
 if [ ! -e qemu ] ; then
     get_source qemu
     cd qemu
@@ -81,7 +84,7 @@ if [ ! -e qemu ] ; then
     cp mips-linux-user/qemu-mips bin
     cd ..
 fi
-qemu_dir="qemu/bin"
+qemu_dir="$workdir/qemu/bin"
 
 # TODO: rm : tmp
 echo $PWD
