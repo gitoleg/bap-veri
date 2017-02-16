@@ -20,9 +20,6 @@ workdir=$HOME/factory
 mkdir -p $workdir
 cd $workdir
 
-#TODO: rm this
-rm -rf pinroot
-
 # getting sources
 get_source() {
     if [ ! -e $1 ]; then
@@ -76,8 +73,7 @@ git clone $results_repo
 #          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
 # qemu_dir="qemu/bin"
 
-# TODO: rm, need only once - delete binaries from previous launches
-rm -r qemu
+rm -rf qemu
 
 if [ ! -e qemu ] ; then
     get_source qemu
@@ -95,7 +91,6 @@ qemu_dir="qemu/bin"
 
 # TODO: rm : tmp
 echo $PWD
-
 
 cd $HOME
 pinroot="opt"
