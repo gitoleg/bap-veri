@@ -69,11 +69,6 @@ results="veri-results"
 rm -rf $results
 git clone $results_repo
 
-# qemu_dir="qemu"
-# wget_pkg $qemu_dir \
-#          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
-# qemu_dir="qemu/bin"
-
 if [ ! -e qemu ] ; then
     get_source qemu
     cd qemu
@@ -135,6 +130,12 @@ run_veri() {
 }
 
 run_qemu() {
+    ls
+    echo "............."
+    ls qemu
+    echo "............."
+    ls $qemu_dir
+
     echo "launch: $qemu_dir/qemu-$1 -tracefile $3 $2 --help"
     ./$qemu_dir/qemu-$1 -tracefile $3 $2 --help
     cp $3 ../
@@ -198,7 +199,7 @@ x86_64_bin="x86_64-binaries/elf"
 
 # TODO: rm : tmp
 echo $PWD
-if [! -e $PIN_ROOT/pin ]; then
+if [ ! -e $PIN_ROOT/pin ]; then
     echo "didn't find: pin"
 fi
 
