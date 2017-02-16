@@ -66,11 +66,11 @@ pkg_make_install bap-veri
 
 results_repo=https://github.com/gitoleg/veri-results
 results="veri-results"
+# to ensure we're are working with fresh
 rm -rf $results
 git clone $results_repo
 
-
-rm -r qemu
+rm -rf qemu
 
 if [ ! -e qemu ] ; then
     get_source qemu
@@ -99,7 +99,6 @@ export PATH=$PATH:$PIN_ROOT
 echo 'export PIN_ROOT=$HOME/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
 echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
 cd $workdir
-
 
 
 # TODO: tmp
