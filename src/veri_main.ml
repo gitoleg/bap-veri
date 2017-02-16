@@ -131,9 +131,11 @@ module Program (O : Opts) = struct
     if options.show_stat then
       Veri_stat.pp Format.std_formatter stat;
     Format.(fprintf std_formatter "%a\n" Veri_stat.pp_summary stat);
-    match options.out with
-    | None -> ()
-    | Some out -> Veri_out.output stats out
+    let () = match options.out with
+      | None -> ()
+      | Some out -> Veri_out.output stats out in
+    if options.csv then
+      Veri_out.csv stats
 
 end
 
