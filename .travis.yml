@@ -38,5 +38,8 @@ addons:
     - libboost-filesystem-dev
     - libcrypto++-dev
     - g++-4.4
+    - libglib2.0-dev
+    - zlib1g-dev
+    - libpixman-1-dev
 env:
   - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true OCAML_VERSION=latest TESTS=false

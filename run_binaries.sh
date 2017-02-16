@@ -5,8 +5,6 @@ set -ex
 bash -ex .travis-opam.sh
 eval `opam config env`
 
-apt-cache show libprotobuf-dev
-sudo apt-get install libprotobuf-dev=2.5.0-9ubuntu1
 opam install piqi -y
 opam install conf-bap-llvm
 opam install bap-std --deps-only
@@ -73,10 +71,25 @@ results="veri-results"
 rm -rf $results
 git clone $results_repo
 
-qemu_dir="qemu"
-wget_pkg $qemu_dir \
-         "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
-qemu_dir="qemu/bin"
+# qemu_dir="qemu"
+# wget_pkg $qemu_dir \
+#          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
+# qemu_dir="qemu/bin"
+
+get_source qemu
+cd qemu
+./configure --prefix=$HOME --with-tracewrap=../bap-frames --target-list="`echo {arm,i386,x86_64,mips}-linux-user`" --disable-werror
+make
+mkdir -p bin
+cp arm-linux-user/qemu-arm bin
+cp i386-linux-user/qemu-arm bin
+cp x86_64-linux-user/qemu-arm bin
+cp mips-linux-user/qemu-arm bin
+cd ..
+
+# TODO: rm : tmp
+echo $PWD
+
 
 cd $HOME
 pinroot="opt"
@@ -88,6 +101,8 @@ export PATH=$PATH:$PIN_ROOT
 echo 'export PIN_ROOT=$HOME/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
 echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
 cd $workdir
+
+
 
 # TODO: tmp
 if [ ! -e $PIN_ROOT/pin ]; then
@@ -126,6 +141,9 @@ run_qemu() {
 }
 
 run_pin() {
+    # TODO: rm : tmp
+    echo $PWD
+
     echo "launch: pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help"
     cd $pintrace_dir
     pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help
@@ -178,8 +196,14 @@ arm_bin="arm-binaries"
 x86_bin="x86-binaries/elf"
 x86_64_bin="x86_64-binaries/elf"
 
+# TODO: rm : tmp
+echo $PWD
+if [! -e $PIN_ROOT/pin ]; then
+    echo "didn't find: pin"
+fi
+
 i=0
-for arch in $x86_64_bin  $x86_bin $arm_bin;  do
+for arch in $x86_bin $x86_64_bin $arm_bin;  do
     for subdir in $subdirs; do
         src_path="$arch/$subdir"
         if [ -e $src_path ]; then
