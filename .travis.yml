@@ -42,6 +42,6 @@ addons:
     - zlib1g-dev
     - libpixman-1-dev
     - realpath
-    - libprotobuf-c-dev
+    - protobuf-c-compiler
 env:
   - FORK_USER=talex5 FORK_BRANCH=containers OPAMYES=true OCAML_VERSION=latest TESTS=false

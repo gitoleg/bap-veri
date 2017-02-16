@@ -73,6 +73,7 @@ git clone $results_repo
 #          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
 # qemu_dir="qemu/bin"
 
+# TODO: rm, tmp!
 rm -rf qemu
 
 if [ ! -e qemu ] ; then
