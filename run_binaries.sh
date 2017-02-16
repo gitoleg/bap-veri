@@ -76,16 +76,22 @@ git clone $results_repo
 #          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
 # qemu_dir="qemu/bin"
 
-get_source qemu
-cd qemu
-./configure --prefix=$HOME --with-tracewrap=../bap-frames --target-list="`echo {arm,i386,x86_64,mips}-linux-user`" --disable-werror
-make
-mkdir -p bin
-cp arm-linux-user/qemu-arm bin
-cp i386-linux-user/qemu-arm bin
-cp x86_64-linux-user/qemu-arm bin
-cp mips-linux-user/qemu-arm bin
-cd ..
+# TODO: rm, need only once - delete binaries from previous launches
+rm -r qemu
+
+if [ ! -e qemu ] ; then
+    get_source qemu
+    cd qemu
+    ./configure --prefix=$HOME --with-tracewrap=../bap-frames --target-list="`echo {arm,i386,x86_64,mips}-linux-user`" --disable-werror
+    make
+    mkdir -p bin
+    cp arm-linux-user/qemu-arm bin
+    cp i386-linux-user/qemu-i386 bin
+    cp x86_64-linux-user/qemu-x86_64 bin
+    cp mips-linux-user/qemu-mips bin
+    cd ..
+fi
+qemu_dir="qemu/bin"
 
 # TODO: rm : tmp
 echo $PWD
