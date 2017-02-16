@@ -5,12 +5,6 @@ set -ex
 bash -ex .travis-opam.sh
 eval `opam config env`
 
-
-apt-cache search libprotobuf
-
-
-
-
 opam install piqi -y
 opam install conf-bap-llvm
 opam install bap-std --deps-only
@@ -80,9 +74,6 @@ git clone $results_repo
 #          "https://github.com/BinaryAnalysisPlatform/qemu/releases/download/tracewrap-2.0-rc2/qemu-tracewrap-ubuntu-14.04.4-LTS.tgz"
 # qemu_dir="qemu/bin"
 
-# TODO: rm, tmp!
-rm -rf qemu
-
 if [ ! -e qemu ] ; then
     get_source qemu
     cd qemu
@@ -90,7 +81,7 @@ if [ ! -e qemu ] ; then
     make
     mkdir -p bin
     cp arm-linux-user/qemu-arm bin
-    cp i386-linux-user/qemu-i386 bin
+    cp i386-linux-user/qemu-i386 bin/qemu-x86
     cp x86_64-linux-user/qemu-x86_64 bin
     cp mips-linux-user/qemu-mips bin
     cd ..
