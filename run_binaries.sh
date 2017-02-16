@@ -16,11 +16,12 @@ opam install conf-bap-llvm
 opam install bap-std --deps-only
 opam install bap-std -v
 
-#TODO: rm this ??
+#TODO: rm? it's here due to a strange behaviour of bap-frames.
 opam_lib=$(opam config var prefix)/lib
 rm -rf $opam_lib/{bap-frames,bap-plugin-frames,bap/frames.plugin}
 
 opam install bap-frames
+
 
 workdir=$HOME/factory
 mkdir -p $workdir
