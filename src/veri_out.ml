@@ -39,7 +39,7 @@ let output stats path =
   Out_channel.close out
 
 let csv stats path =
-  let out = Out_channel.create ~append:true (path ^ ".csv") in
+  let out = Out_channel.create ~append:true path in
   let of_stat (name, s) =
     sprintf "%s, %d, %d, %d, %d, %d, %d, %d\n"
       name

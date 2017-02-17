@@ -134,7 +134,7 @@ module Program (O : Opts) = struct
     let () = match options.out with
       | None -> ()
       | Some out -> Veri_out.output stats out in
-    match options.out with
+    match options.csv with
     | None -> ()
     | Some out -> Veri_out.csv stats out
 
