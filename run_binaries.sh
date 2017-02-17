@@ -1,21 +1,24 @@
 #!/bin/bash
 
-set -ex
+#set -ex
 
-bash -ex .travis-opam.sh
+#bash -ex .travis-opam.sh
 eval `opam config env`
 
 opam install piqi -y
 opam install conf-bap-llvm
 opam install bap-std --deps-only
 opam install bap-std -v
+opam install bap-llvm -y
+opam install bap-x86 -y
+opam install bap-arm -y
+opam install pcre -y
+opam install textutils -y
 
 #TODO: rm? it's here due to a strange behaviour of bap-frames.
-opam_lib=$(opam config var prefix)/lib
-rm -rf $opam_lib/{bap-frames,bap-plugin-frames,bap/frames.plugin}
-
-opam install bap-frames
-
+# opam_lib=$(opam config var prefix)/lib
+# rm -rf $opam_lib/{bap-frames,bap-plugin-frames,bap/frames.plugin}
+# opam reinstall bap-frames
 
 workdir=$HOME/factory
 mkdir -p $workdir
@@ -28,14 +31,12 @@ get_source() {
     fi
 }
 
-# TODO : do I really need it ? it is used for bap-veri only
-# and it's possible to install it through opam
 pkg_make_install() {
     if ocamlfind query $1 2>/dev/null ; then
-        cd $1
+        cd $1       
         oasis setup
         ./configure --prefix=`opam config var prefix`
-        make && make install
+        make && make reinstall
         cd ..
     fi
 }
@@ -56,21 +57,21 @@ get_source x86-binaries
 get_source x86_64-binaries
 
 # install libtrace
-cd bap-frames/libtrace
-./autogen.sh && ./configure
-make && sudo make install
-cd $workdir
+# cd bap-frames/libtrace
+# ./autogen.sh && ./configure
+# make && sudo make install
+# cd $workdir
 
 # install bap-veri
-pkg_make_install bap-veri
+# TODO: reinstall!
+#pkg_make_install bap-veri
 
 results_repo=https://github.com/gitoleg/veri-results
-results="veri-results"
-# to ensure we're are working with fresh
-rm -rf $results
-git clone $results_repo
+results="$workdir/veri-results"
 
-rm -rf qemu
+# to ensure we're are working with fresh
+#rm -rf $results
+#git clone $results_repo
 
 if [ ! -e qemu ] ; then
     get_source qemu
@@ -86,28 +87,16 @@ if [ ! -e qemu ] ; then
 fi
 qemu_dir="$workdir/qemu/bin"
 
-# TODO: rm : tmp
-echo $PWD
+if [ -z "$PIN_ROOT" ]; then
+    pinroot="$workdir/pinroot"
+    wget_pkg $pinroot \
+        "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
 
-cd $HOME
-pinroot="opt"
-wget_pkg $pinroot \
-         "http://software.intel.com/sites/landingpage/pintool/downloads/pin-2.14-71313-gcc.4.4.7-linux.tar.gz"
-
-export PIN_ROOT=$HOME/$pinroot/pin-2.14-71313-gcc.4.4.7-linux
-export PATH=$PATH:$PIN_ROOT
-echo 'export PIN_ROOT=$HOME/$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
-echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
-cd $workdir
-
-
-# TODO: tmp
-if [ ! -e $PIN_ROOT/pin ]; then
-    echo "no pin!!"
-    ls $pinroot
-    echo "....."
-    ls $PIN_ROOT
-    exit 1
+    export PIN_ROOT=$pinroot/pin-2.14-71313-gcc.4.4.7-linux
+    export PATH=$PATH:$PIN_ROOT
+    echo 'export PIN_ROOT=$pinroot/pin-2.14-71313-gcc.4.4.7-linux' >>$HOME/.bashrc
+    echo 'export PATH=$PATH:$PIN_ROOT' >>$HOME/.bashrc
+    cd $workdir
 fi
 
 pintrace_dir="bap-pintraces"
@@ -115,10 +104,9 @@ cd $pintrace_dir
 make
 cd ..
 
-# TODO : add a second file - with stat
+#replace to a call from opam
 run_veri() {
-    veri_sum=$(basename $2).sum
-    veri_stat=$(basename $2).stat
+    veri_out=$(basename $2).sum
     case $1 in
         arm) rules_file="bap-veri/rules/arm_qemu"
              ;;
@@ -128,30 +116,33 @@ run_veri() {
                 ;;
         *) echo "didn't find rules for $1 arch"
     esac
-    bap-veri --show_stat --output=$veri_sum --rules $ruls_file $2 > $veri_stat
+    echo "bap-veri --output=$veri_out --rules $rules_file $2.frames"
+    ./bap-veri/veri_main.native --csv=$arch.csv --output=$veri_out --rules $rules_file $2.frames 1>/dev/null
 }
 
 run_qemu() {
-    ls
-    echo "............."
-    ls qemu
-    echo "............."
-    ls $qemu_dir
+    case $1 in
+	*arm) qemu_args="-L /usr/arm-linux-gnueabi"
+	    ;;
+	*) qemu_args=""
+	    ;;
+    esac
 
-    echo "launch: $qemu_dir/qemu-$1 -tracefile $3 $2 --help"
-    ./$qemu_dir/qemu-$1 -tracefile $3 $2 --help
-    cp $3 ../
+    tracename=$(basename $2).frames
+    echo "launch: $qemu_dir/qemu-$1 $qemu_args -tracefile $tracename $2 --help"
+    cd $qemu_dir
+    ./qemu-$1 $qemu_args -tracefile $tracename $2 --help 1>/dev/null 
+    mv $tracename $workdir
+    cd $workdir
 }
 
 run_pin() {
-    # TODO: rm : tmp
-    echo $PWD
-
-    echo "launch: pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help"
-    cd $pintrace_dir
-    pin -injection child -t obj-intel64/bpt.so -o $2 -- $1 --help
-    cp $2 ../
-    cd ..
+    tracename=$(basename $1).frames
+    echo "launch: pin -injection child -t obj-intel64/bpt.so -o $tracename -- $1 --help"
+    cd $pintrace_dir 
+    pin -injection child -t obj-intel64/bpt.so -o $tracename -- $1 --help 1>/dev/null 
+    mv $tracename $workdir
+    cd $workdir
 }
 
 arch_of_path() {
@@ -167,6 +158,7 @@ arch_of_path() {
 }
 
 deploy () {
+    return 0
     cd $results
     git config user.name "Travis CI"
     git config user.email "$COMMIT_AUTHOR_EMAIL"
@@ -193,20 +185,13 @@ deploy () {
 }
 
 
-
 subdirs="binutils coreutils findutils"
 arm_bin="arm-binaries"
 x86_bin="x86-binaries/elf"
 x86_64_bin="x86_64-binaries/elf"
 
-# TODO: rm : tmp
-echo $PWD
-if [ ! -e $PIN_ROOT/pin ]; then
-    echo "didn't find: pin"
-fi
-
 i=0
-for arch in $x86_bin $x86_64_bin $arm_bin;  do
+for arch in $x86_bin $x86_64_bin $arm_bin; do
     for subdir in $subdirs; do
         src_path="$arch/$subdir"
         if [ -e $src_path ]; then
@@ -227,25 +212,30 @@ for arch in $x86_bin $x86_64_bin $arm_bin;  do
                         tool="qemu"
                     fi
 
-                    trace=$(basename $file).frames
-                    if [ $tool == "qemu" ]; then
-                        run_qemu $arch $file $trace
-                    else
-                        tmp=$PWD/$file
-                        run_pin $tmp $trace
-                    fi
+		    case $file in 
+			*sysinfo) echo "will not process $file"
+			    ;;
+			*)
+			    full=$PWD/$file
+			    echo "full is $full"
+			    if [ $tool == "qemu" ]; then
+				run_qemu $arch $full
+			    else
+				run_pin $full
+			    fi
 
-                    run_veri $arch $trace
-                    dst=$(dirname $file)
-                    cat $veri_out
-                    mkdir -p "$results/$dst"
-                    cp $veri_stat $veri_sum "$results/$dst"
+			    name=$(basename $file)
+			    run_veri $arch $name
+			    dst=$(dirname $file)
+			    mkdir -p "$results/$dst"
+			    mv $veri_out "$results/$dst"
+			    mv $name.frames "$results/$dst"		     
+		    esac
 
                     let c=$i%10
                     if [ $c -eq 0 ]; then
                         deploy
                     fi
-
                 fi
             done
         fi
