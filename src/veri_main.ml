@@ -21,7 +21,7 @@ module Veri_options = struct
     show_stat : bool;
     path  : string;
     out   : string option;
-    csv   : bool;
+    csv   : string option;
   } [@@deriving fields]
 end
 
@@ -134,8 +134,9 @@ module Program (O : Opts) = struct
     let () = match options.out with
       | None -> ()
       | Some out -> Veri_out.output stats out in
-    if options.csv then
-      Veri_out.csv stats
+    match options.out with
+    | None -> ()
+    | Some out -> Veri_out.csv stats out
 
 end
 
@@ -165,7 +166,9 @@ module Command = struct
   let show_stat = make_flag ~name:"show-stat" ~doc:
       "Show verification statistic"
 
-  let csv = make_flag ~name:"csv" ~doc:"output info in csv"
+  let csv =
+    let doc = "File to output results in csv" in
+    Arg.(value & opt (some string) None & info ["csv"] ~docv:"FILE" ~doc)
 
   let info =
     let doc = "Bil verification tool" in

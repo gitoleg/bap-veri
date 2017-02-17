@@ -38,10 +38,11 @@ let output stats path =
   Out_channel.output_string out (render tab);
   Out_channel.close out
 
-let csv stats =
+let csv stats path =
+  let out = Out_channel.create ~append:true (path ^ ".csv") in
   let of_stat (name, s) =
-    let out = Out_channel.create (name ^ ".csv") in
-    sprintf "%d, %d, %d, %d, %d, %d, %d\n"
+    sprintf "%s, %d, %d, %d, %d, %d, %d, %d\n"
+      name
       (Abs.total s)
       (Abs.successed s)
       (Abs.misexecuted s)
@@ -49,6 +50,6 @@ let csv stats =
       (Abs.damaged s)
       (Abs.undisasmed s)
       (Abs.mislifted s) |>
-    Out_channel.output_string out;
-    Out_channel.close out in
-  List.iter ~f:of_stat stats
+    Out_channel.output_string out in
+  List.iter ~f:of_stat stats;
+  Out_channel.close out
