@@ -1,6 +1,5 @@
 open Core_kernel.Std
 open Bap.Std
-open Regular.Std
 open Bap_traces.Std
 open Bap_future.Std
 
@@ -15,11 +14,6 @@ type error = Veri_error.t
 
 let unsound_semantic name results  =
   `Unsound_sema, [`Name name; `Diff results]
-
-let unknown_semantic name er =
-  `Unknown_sema, [`Name name; `Error er]
-
-let disasm_error er = `Disasm_error, [`Error er]
 
 let create_move_event tag cell' data' =
   Value.create tag Move.({cell = cell'; data = data';})
@@ -40,47 +34,27 @@ let find_mem_load  = find Event.memory_load
 let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
-module Disasm = struct
-  module Dis = Disasm_expert.Basic
-  open Dis
-  type t = (asm, kinds) Dis.t
-
-  let insn dis mem =
-    (match Dis.insn_of_mem dis mem with
-     | Error er -> Error er
-     | Ok r -> match r with
-       | mem', Some insn, `finished -> Ok (mem',insn)
-       | _, None, _ ->
-         Or_error.error_string "nothing was disasmed"
-       | _, _, `left _ ->
-         Or_error.error_string "overloaded chunk") |> function
-    | Ok r -> Ok r
-    | Error er -> Error (disasm_error er)
-
-  let insn_name = Dis.Insn.name
-end
-
 module Events = Value.Set
 
 class context policy trace = object(self:'s)
-  inherit Veri_traci.context trace as super
-  val events = Events.empty
-  val error : error option = None
-  val other : 's option = None
-  val insn  : string option = None
-  val code  : Chunk.t option = None
-  val bil   : bil = []
+  inherit Veri_chunki.context trace as super
 
-  method cleanup =
-    let s = {< other = None; error = None; insn = None; bil = [];
-               events = Events.empty; code = None; >} in
+  val events = Events.empty
+  val other : 's option = None
+  val code : Chunk.t option = None
+
+  method cleanup : 's =
+    let s = {< other = None; events = Events.empty; code = None; >} in
+    let s = s#set_insn None in
+    let s = s#set_bil [] in
+    let s = s#notify_error None in
     s#drop_pc
 
   method notify_success = self
 
-  method merge = match error with
+  method merge = match self#error with
     | Some er -> self#cleanup
-    | None -> match insn with
+    | None -> match self#insn with
       | None -> self#cleanup
       | Some name ->
         let other = Option.value_exn self#other in
@@ -89,7 +63,7 @@ class context policy trace = object(self:'s)
         | [] -> (self#notify_success)#cleanup
         | results ->
           let er = unsound_semantic name results in
-          (self#notify_error er)#cleanup
+          (self#notify_error @@ Some er)#cleanup
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
@@ -103,14 +77,11 @@ class context policy trace = object(self:'s)
   method code  = code
   method other = other
   method events  = events
-  method set_bil  b = {< bil = b >}
-  method set_code c = {< code = Some c >}
-  method set_insn s = {< insn = Some s >}
-  method notify_error er   = {< error = Some er >}
   method register_event ev = {< events = Set.add events ev; >}
   method save s  = {< other = Some s >}
   method switch  = (Option.value_exn other)#save self
   method drop_pc = self#with_pc Bil.Bot
+  method set_code c = {< code = Some c>}
 end
 
 
@@ -123,11 +94,11 @@ class verbose_context init_stat policy trace = object(self:'s)
   method private report_of_error (_, data) =
     List.find_map data ~f:(function
         | `Diff diff ->
-          Some (Veri_report.create ~bil ~data:diff
+          Some (Veri_report.create ~bil:self#bil ~data:diff
                   ~right:(Set.to_list self#events)
                   ~left:(Set.to_list (Option.value_exn other)#events)
-                  ~insn:(Option.value_exn insn)
-                  ~code:(Option.value_exn code |> Chunk.data))
+                  ~insn:(Option.value_exn self#insn)
+                  ~code:(Option.value_exn self#code |> Chunk.data))
         | _ -> None)
 
   method private send_report er =
@@ -138,27 +109,25 @@ class verbose_context init_stat policy trace = object(self:'s)
   method update_stat s = {< stat = s >}
 
   method! notify_success =
-    let name = Option.value_exn insn in
+    let name = Option.value_exn self#insn in
     {< stat = Veri_stat.success stat name >}
 
   method! notify_error er =
-    self#send_report er;
-    let s = super#notify_error er in
-    let stat = Veri_stat.notify stat er in
-    s#update_stat stat
+    match er with
+    | None -> super#notify_error er
+    | Some error ->
+      self#send_report error;
+      let s = super#notify_error er in
+      let stat = Veri_stat.notify stat error in
+      s#update_stat stat
 
   method stat    = stat
   method reports = fst stream
 end
 
-
-let target_info arch =
+let mem_of_arch arch =
   let module Target = (val target_of_arch arch) in
-  Target.CPU.mem, Target.lift
-
-let memory_of_chunk endian chunk =
-  Bigstring.of_string (Chunk.data chunk) |>
-  Memory.create endian (Chunk.addr chunk)
+  Target.CPU.mem
 
 let other_events c = match c#other with
   | None -> []
@@ -176,12 +145,11 @@ let same_var  var  mv = Var.name var  = Var.name (Move.cell mv)
 let same_addr addr mv = addr = Move.cell mv
 
 class ['a] t arch dis =
-  let endian = Arch.endian arch in
-  let mem_var, lift = target_info arch in
+  let mem_var = mem_of_arch arch in
 
   object(self)
     constraint 'a = #context
-    inherit ['a] Veri_traci.t arch as super
+    inherit ['a] Veri_chunki.t arch dis as super
 
     method private update_event ev =
       SM.update (fun c -> c#register_event ev)
@@ -308,26 +276,9 @@ class ['a] t arch dis =
       self#add_pc_update >>= fun () ->
       SM.update (fun c -> c#switch)
 
-    method private eval_insn (mem, insn) =
-      let name = Disasm.insn_name insn in
-      SM.update (fun c -> c#set_insn name) >>= fun () ->
-      match lift mem insn with
-      | Error er ->
-        SM.update (fun c ->
-            c#notify_error @@ unknown_semantic name er)
-      | Ok bil ->
-        SM.update (fun c -> c#set_bil bil) >>= fun () ->
-        self#eval bil
-
-    method private eval_chunk chunk =
-      self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
-      match memory_of_chunk endian chunk with
-      | Error er ->
-        SM.update (fun c -> c#notify_error (disasm_error er))
-      | Ok mem ->
-        match Disasm.insn dis mem with
-        | Error er -> SM.update (fun c -> c#notify_error er)
-        | Ok insn -> self#eval_insn insn
+    method! eval_exec chunk =
+      super#eval_exec chunk >>= fun () ->
+      self#update_event (Value.create Event.pc_update (Chunk.addr chunk))
 
     method! eval_event ev =
       Value.Match.(
@@ -346,7 +297,7 @@ class ['a] t arch dis =
       | None -> SM.return ()
       | Some code ->
         SM.update (fun c -> c#split) >>= fun () ->
-        self#eval_chunk code      >>= fun () ->
+        self#eval_exec code       >>= fun () ->
         SM.update (fun c -> c#merge)
 
     method! eval_trace trace =
