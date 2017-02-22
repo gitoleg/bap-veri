@@ -5,7 +5,8 @@ open Regular.Std
 
 type event = Trace.event
 type events = Value.Set.t
-type rule = Veri_rule.t 
+
+type rule = Veri_rule.t [@@deriving bin_io, compare, sexp]
 
 module Matched : sig
   type t = event list * event list [@@deriving bin_io, compare, sexp]
@@ -15,6 +16,9 @@ end
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
 type t [@@deriving bin_io, compare, sexp]
 
+type result = rule * matched
+[@@deriving bin_io, compare, sexp]
+
 val empty : t
 val add : t -> rule -> t
 
@@ -22,4 +26,4 @@ val add : t -> rule -> t
 val match_events: rule -> string -> events -> events -> matched option
 
 (** [denied policy insn left right] *)
-val denied: t -> string -> events -> events -> (rule * matched) list
+val denied: t -> string -> events -> events -> result list

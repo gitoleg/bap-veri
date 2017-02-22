@@ -1,8 +1,16 @@
 open Core_kernel.Std
 
-type t = [
-  | `Overloaded_chunk         (** chunk contains more then one instruction  *)
-  | `Damaged_chunk of Error.t (** chunk data can't be transformed to memory *)
-  | `Disasm_error  of Error.t (** chunk data can't be disasmed        *)
-  | `Lifter_error  of string * Error.t (** chunk data can't be lifted *)
+type kind = [
+  | `Disasm_error   (** error with disassembling                     *)
+  | `Soundness      (** instruction execution mismatches with trace  *)
+  | `Incompleteness (** instruction is unknown for lifter            *)
 ] [@@deriving bin_io, compare, sexp]
+
+type extra_data = [
+  | `Name of string
+  | `Diff of Veri_policy.result list
+  | `Error of Error.t
+] [@@deriving bin_io, compare, sexp]
+
+type t = kind * extra_data list
+[@@deriving bin_io, compare, sexp]

@@ -1,4 +1,3 @@
-
 open Regular.Std
 type t [@@deriving bin_io, sexp]
 type stat = t [@@deriving bin_io, sexp]
@@ -18,26 +17,16 @@ include Regular.S with type t := t
                       without any divergence from trace at least once (or more);
     misexecuted     - instructions, that were successfuly lifted and evaluted
                       with divergence from trace at least once (or more);
-    abs_successed   - the same as successed but no divergences has occured
-    abs_misexecuted - the same as misexecuted but haven't any successfully
-                      matches with trace at all;
     mislifted       - instructions, that weren't recognized by lifter;
-    overloaded      - chunks that contains more that one instruction;
-    damaged         - chunks that failed to be represented as memory;
-    undisasmed      - chunks that were represented as memory, but failed to
-                      be disasmed;
+    undisasmed      - errors in disassembling;
     total           - whole count of cases above *)
 
 (** absolute counts  *)
 module Abs : sig
   type t = stat -> int
   val successed       : t
-  val abs_successed   : t
   val misexecuted     : t
-  val abs_misexecuted : t
-  val overloaded      : t
-  val damaged         : t
-  val undisasmed      : t 
+  val undisasmed      : t
   val mislifted       : t
   val total           : t
 end
@@ -46,11 +35,7 @@ end
 module Rel : sig
   type t = ?as_percents:bool -> stat -> float
   val successed       : t
-  val abs_successed   : t
   val misexecuted     : t
-  val abs_misexecuted : t
-  val overloaded      : t
-  val damaged         : t
   val undisasmed      : t
   val mislifted       : t
 end
@@ -59,8 +44,6 @@ end
 module Names : sig
   type t = stat -> string list
   val successed       : t
-  val abs_successed   : t
   val misexecuted     : t
-  val abs_misexecuted : t
   val mislifted       : t
 end

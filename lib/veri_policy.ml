@@ -37,6 +37,7 @@ end
 
 type matched = Matched.t [@@deriving bin_io, compare, sexp]
 type t = rule list [@@deriving bin_io, compare, sexp]
+type result = rule * matched [@@deriving bin_io, compare, sexp]
 
 let empty = []
 let add t rule : t = rule :: t
