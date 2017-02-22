@@ -62,45 +62,34 @@ end
 
 module Events = Value.Set
 
-class context stat policy trace = object(self:'s)
+class context policy trace = object(self:'s)
   inherit Veri_traci.context trace as super
   val events = Events.empty
-  val stream = Stream.create ()
   val error : error option = None
   val other : 's option = None
   val insn  : string option = None
   val code  : Chunk.t option = None
-  val stat  : Veri_stat.t = stat
   val bil   : bil = []
 
-  method private make_report data =
-    Veri_report.create ~bil ~data
-      ~right:(Set.to_list self#events)
-      ~left:(Set.to_list (Option.value_exn other)#events)
-      ~insn:(Option.value_exn insn)
-      ~code:(Option.value_exn code |> Chunk.data)
-
-  method private finish_step stat =
+  method cleanup =
     let s = {< other = None; error = None; insn = None; bil = [];
-               stat = stat; events = Events.empty; code = None; >} in
+               events = Events.empty; code = None; >} in
     s#drop_pc
 
-  method merge =
-    match error with
-    | Some er -> self#finish_step (Veri_stat.notify stat er)
+  method notify_success = self
+
+  method merge = match error with
+    | Some er -> self#cleanup
     | None -> match insn with
-      | None -> self#finish_step stat
+      | None -> self#cleanup
       | Some name ->
         let other = Option.value_exn self#other in
         let events, events' = other#events, self#events in
         match Veri_policy.denied policy name events events' with
-        | [] -> self#finish_step (Veri_stat.success stat name)
+        | [] -> (self#notify_success)#cleanup
         | results ->
           let er = unsound_semantic name results in
-          let stat = Veri_stat.notify stat er in
-          let report = self#make_report results in
-          Signal.send (snd stream) report;
-          self#finish_step (Veri_stat.failbil stat name)
+          (self#notify_error er)#cleanup
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
@@ -112,10 +101,8 @@ class context stat policy trace = object(self:'s)
     s#drop_pc
 
   method code  = code
-  method stat  = stat
   method other = other
   method events  = events
-  method reports = fst stream
   method set_bil  b = {< bil = b >}
   method set_code c = {< code = Some c >}
   method set_insn s = {< insn = Some s >}
@@ -125,6 +112,45 @@ class context stat policy trace = object(self:'s)
   method switch  = (Option.value_exn other)#save self
   method drop_pc = self#with_pc Bil.Bot
 end
+
+
+class verbose_context init_stat policy trace = object(self:'s)
+  inherit context policy trace as super
+
+  val stat : Veri_stat.t = init_stat
+  val stream = Stream.create ()
+
+  method private report_of_error (_, data) =
+    List.find_map data ~f:(function
+        | `Diff diff ->
+          Some (Veri_report.create ~bil ~data:diff
+                  ~right:(Set.to_list self#events)
+                  ~left:(Set.to_list (Option.value_exn other)#events)
+                  ~insn:(Option.value_exn insn)
+                  ~code:(Option.value_exn code |> Chunk.data))
+        | _ -> None)
+
+  method private send_report er =
+    match self#report_of_error er with
+    | None -> ()
+    | Some report -> Signal.send (snd stream) report
+
+  method update_stat s = {< stat = s >}
+
+  method! notify_success =
+    let name = Option.value_exn insn in
+    {< stat = Veri_stat.success stat name >}
+
+  method! notify_error er =
+    self#send_report er;
+    let s = super#notify_error er in
+    let stat = Veri_stat.notify stat er in
+    s#update_stat stat
+
+  method stat    = stat
+  method reports = fst stream
+end
+
 
 let target_info arch =
   let module Target = (val target_of_arch arch) in
@@ -288,7 +314,7 @@ class ['a] t arch dis =
       match lift mem insn with
       | Error er ->
         SM.update (fun c ->
-            c#notify_error (incomplete_semantic name er))
+            c#notify_error @@ incomplete_semantic name er)
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
         self#eval bil

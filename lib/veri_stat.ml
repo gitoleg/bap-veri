@@ -6,55 +6,65 @@ module Calls = String.Map
 type ok_er = int * int [@@deriving bin_io, compare, sexp]
 
 type t = {
-  calls : ok_er Calls.t;
-  errors: Veri_error.t list;
+  executed : ok_er Calls.t;
+  unlifted : int Calls.t;
+  undisasm : int;
 } [@@deriving bin_io, compare, sexp]
 
 type stat = t [@@deriving bin_io, compare, sexp]
 
-let empty = { calls = Calls.empty; errors = []; }
-let errors t = t.errors
-let notify t er = {t with errors = er :: t.errors }
+let empty = {
+  executed = Calls.empty;
+  unlifted = Calls.empty;
+  undisasm = 0;
+}
 
-let update t name ~ok ~er =
+let update_executed t name ~ok ~er =
   {t with
-   calls =
-     Map.change t.calls name
+   executed =
+     Map.change t.executed name
        (function
          | None -> Some (ok, er)
          | Some (ok',er') -> Some (ok + ok', er + er')) }
 
-let failbil t name = update t name ~ok:0 ~er:1
-let success t name = update t name ~ok:1 ~er:0
+let update_unlifted t name =
+  {t with
+   unlifted =
+     Map.change t.unlifted name
+       (function
+         | None -> Some 1
+         | Some cnt -> Some (cnt + 1)) }
 
-let name_of_error (_, data) =
+let success t name = update_executed t name ~ok:1 ~er:0
+
+let name_of_data data =
   List.find_map ~f:(function
       |`Name s -> Some s
       | _ -> None) data
+
+let notify t (kind, data) = match kind with
+  | `Disasm_error -> { t with undisasm = t.undisasm + 1 }
+  | `Soundness ->
+    let name = Option.value_exn (name_of_data data) in
+    update_executed t name ~ok:0 ~er:1
+  | `Incompleteness ->
+    let name = Option.value_exn (name_of_data data) in
+    update_unlifted t name
 
 module Abs = struct
 
   type nonrec t = t -> int
 
-  let fold_calls {calls} f = Map.fold ~f ~init:0 calls
-
-  let errors_count t =
-    let rec loop ((und, snd, inc) as acc) = function
-      | [] -> acc
-      | (kind, data) :: tl -> match kind with
-        | `Disasm_error   -> loop (und + 1, snd, inc) tl
-        | `Soundness      -> loop (und, snd + 1, inc) tl
-        | `Incompleteness -> loop (und, snd, inc + 1) tl in
-    loop (0,0,0) t.errors
-
-  let undisasmed  t = let x,_,_ = errors_count t in x
-  let misexecuted t = let _,x,_ = errors_count t in x
-  let mislifted   t = let _,_,x = errors_count t in x
-  let successed   t = fold_calls t (fun ~key ~data cnt -> cnt + fst data)
+  let undisasmed  t = t.undisasm
+  let misexecuted t =
+    Calls.fold ~f:(fun ~key ~data acc -> acc + snd data) t.executed ~init:0
+  let mislifted t =
+    Calls.fold ~f:(fun ~key ~data acc -> acc + data) t.unlifted ~init:0
+  let successed t =
+    Calls.fold ~f:(fun ~key ~data acc -> acc + fst data) t.executed ~init:0
 
   let total t =
-    List.length t.errors +
-    fold_calls t (fun ~key ~data cnt -> cnt + fst data + snd data)
+    undisasmed t + misexecuted t + mislifted t + successed t
 
 end
 
@@ -78,25 +88,17 @@ module Names = struct
 
   type nonrec t = t -> string list
 
-  let fold_calls ~condition t =
+  let fold_executed ~condition t =
     Map.fold ~f:(fun ~key ~data names ->
         if condition data then Set.add names key
-        else names) ~init:String.Set.empty t.calls |>
+        else names) ~init:String.Set.empty t.executed |>
     Set.to_list
 
-  let successed = fold_calls ~condition:(fun data -> fst data <> 0)
-  let misexecuted = fold_calls ~condition:(fun data -> snd data <> 0)
+  let successed   = fold_executed ~condition:(fun data -> fst data <> 0)
+  let misexecuted = fold_executed ~condition:(fun data -> snd data <> 0)
 
-  let mislifted t =
-    List.fold_left ~init:String.Set.empty
-      ~f:(fun names ((kind, data) as er) ->
-          match kind with
-          | `Incompleteness ->
-            let name = name_of_error er in
-            if Option.is_none name then names
-            else Set.add names (Option.value_exn name)
-          | _ -> names) t.errors |>
-    Set.to_list
+  let mislifted t = Calls.keys t.unlifted
+
 end
 
 let print_table fmt info data =
@@ -141,13 +143,18 @@ end
 
 let merge ts =
   let (+) s s' =
-    let errors = s.errors @ s'.errors in
-    let calls = Map.fold ~init:s.calls s'.calls
+    let executed = Map.fold ~init:s.executed s'.executed
         ~f:(fun ~key ~data calls ->
             Map.change calls key ~f:(function
                 | None -> Some data
                 | Some (ok,er) -> Some (fst data + ok, snd data + er))) in
-    {errors; calls} in
+    let undisasm = s.undisasm + s'.undisasm in
+    let unlifted = Map.fold ~init:s.unlifted s'.unlifted
+        ~f:(fun ~key ~data calls ->
+            Map.change calls key ~f:(function
+                | None -> Some data
+                | Some cnt -> Some (data + cnt))) in
+    {executed; undisasm; unlifted} in
   List.fold ~f:(+) ~init:empty ts
 
 let pp_summary = Summary.pp
@@ -193,7 +200,7 @@ include Regular.Make(struct
 
     let pp fmt t =
       let misexec =
-        List.filter ~f:(fun (_,(_,er)) -> er <> 0) (Map.to_alist t.calls) in
+        List.filter ~f:(fun (_,(_,er)) -> er <> 0) (Map.to_alist t.executed) in
       let mislift = Names.mislifted t in
       Format.fprintf fmt "%a\n%a\n"
         pp_misexecuted misexec pp_mislifted mislift
