@@ -6,6 +6,7 @@ module Disasm : sig
   module Dis = Disasm_expert.Basic
   open Dis
   type t = (asm, kinds) Dis.t
+  type insn = Dis.full_insn
 end
 
 type 'a u = 'a Bil.Result.u
@@ -15,9 +16,9 @@ class context: Trace.t -> object('s)
 
     method notify_error : Veri_error.t option -> 's
     method set_bil      : bil -> 's
-    method set_insn     : string option -> 's
+    method set_insn     : Disasm.insn option -> 's
 
-    method insn  : string option
+    method insn  : Disasm.insn option
     method bil   : bil
     method error : Veri_error.t option
   end

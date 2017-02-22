@@ -3,6 +3,8 @@ open Bap.Std
 open Bap_traces.Std
 open Bap_future.Std
 
+module Dis = Disasm_expert.Basic
+
 module SM = Monad.State
 open SM.Monad_infix
 
@@ -34,6 +36,10 @@ let find_mem_load  = find Event.memory_load
 let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
+let insn_name = function
+  | None -> None
+  | Some insn -> Some (Dis.Insn.name insn)
+
 module Events = Value.Set
 
 class context policy trace = object(self:'s)
@@ -54,7 +60,7 @@ class context policy trace = object(self:'s)
 
   method merge = match self#error with
     | Some er -> self#cleanup
-    | None -> match self#insn with
+    | None -> match insn_name self#insn with
       | None -> self#cleanup
       | Some name ->
         let other = Option.value_exn self#other in
@@ -97,7 +103,7 @@ class verbose_context init_stat policy trace = object(self:'s)
           Some (Veri_report.create ~bil:self#bil ~data:diff
                   ~right:(Set.to_list self#events)
                   ~left:(Set.to_list (Option.value_exn other)#events)
-                  ~insn:(Option.value_exn self#insn)
+                  ~insn:(Option.value_exn (insn_name self#insn))
                   ~code:(Option.value_exn self#code |> Chunk.data))
         | _ -> None)
 
@@ -109,7 +115,7 @@ class verbose_context init_stat policy trace = object(self:'s)
   method update_stat s = {< stat = s >}
 
   method! notify_success =
-    let name = Option.value_exn self#insn in
+    let name = Option.value_exn (insn_name self#insn) in
     {< stat = Veri_stat.success stat name >}
 
   method! notify_error er =

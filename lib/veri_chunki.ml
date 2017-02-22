@@ -17,6 +17,7 @@ module Disasm = struct
   module Dis = Disasm_expert.Basic
   open Dis
   type t = (asm, kinds) Dis.t
+  type insn = Dis.full_insn
 
   let insn dis mem =
     (match Dis.insn_of_mem dis mem with
@@ -37,13 +38,12 @@ class context trace = object(self:'s)
   inherit Veri_traci.context trace as super
 
   val error : error option = None
-  val insn  : string option = None
+  val insn  : Disasm.insn option = None
   val bil   : bil = []
 
   method set_bil  b = {< bil = b >}
   method set_insn s = {< insn = s >}
   method notify_error er = {< error = er >}
-
   method insn  = insn
   method bil   = bil
   method error = error
@@ -67,7 +67,7 @@ class ['a] t arch dis =
 
     method private eval_insn (mem, insn) =
       let name = Disasm.insn_name insn in
-      SM.update (fun c -> c#set_insn (Some name)) >>= fun () ->
+      SM.update (fun c -> c#set_insn (Some insn)) >>= fun () ->
       match lift mem insn with
       | Error er ->
         SM.update (fun c ->
