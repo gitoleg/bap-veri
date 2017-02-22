@@ -6,11 +6,11 @@ type kind = [
   | `Unknown_sema (** instruction semantic is unknown for lifter   *)
 ] [@@deriving bin_io, compare, sexp]
 
-type extra_data = [
+type attr = [
   | `Name of string
   | `Diff of Veri_policy.result list
   | `Error of Error.t
 ] [@@deriving bin_io, compare, sexp]
 
-type t = kind * extra_data list
+type t = kind * attr list
 [@@deriving bin_io, compare, sexp]
