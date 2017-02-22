@@ -1,9 +1,9 @@
 open Core_kernel.Std
 
 type kind = [
-  | `Disasm_error   (** error with disassembling                     *)
-  | `Soundness      (** instruction execution mismatches with trace  *)
-  | `Incompleteness (** instruction is unknown for lifter            *)
+  | `Disasm_error (** error with disassembling                     *)
+  | `Unsound_sema (** instruction execution mismatches with trace  *)
+  | `Unknown_sema (** instruction semantic is unknown for lifter   *)
 ] [@@deriving bin_io, compare, sexp]
 
 type extra_data = [

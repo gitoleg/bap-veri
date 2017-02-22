@@ -14,10 +14,10 @@ type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 
 let unsound_semantic name results  =
-  `Soundness, [`Name name; `Diff results]
+  `Unsound_sema, [`Name name; `Diff results]
 
-let incomplete_semantic name er =
-  `Incompleteness, [`Name name; `Error er]
+let unknown_semantic name er =
+  `Unknown_sema, [`Name name; `Error er]
 
 let disasm_error er = `Disasm_error, [`Error er]
 
@@ -314,7 +314,7 @@ class ['a] t arch dis =
       match lift mem insn with
       | Error er ->
         SM.update (fun c ->
-            c#notify_error @@ incomplete_semantic name er)
+            c#notify_error @@ unknown_semantic name er)
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
         self#eval bil

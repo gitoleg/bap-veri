@@ -44,10 +44,10 @@ let name_of_data data =
 
 let notify t (kind, data) = match kind with
   | `Disasm_error -> { t with undisasm = t.undisasm + 1 }
-  | `Soundness ->
+  | `Unsound_sema ->
     let name = Option.value_exn (name_of_data data) in
     update_executed t name ~ok:0 ~er:1
-  | `Incompleteness ->
+  | `Unknown_sema ->
     let name = Option.value_exn (name_of_data data) in
     update_unlifted t name
 
