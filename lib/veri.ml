@@ -13,6 +13,14 @@ type 'a r = 'a Bil.Result.r
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 
+let unsound_semantic name results  =
+  `Soundness, [`Name name; `Diff results]
+
+let incomplete_semantic name er =
+  `Incompleteness, [`Name name; `Error er]
+
+let disasm_error er = `Disasm_error, [`Error er]
+
 let create_move_event tag cell' data' =
   Value.create tag Move.({cell = cell'; data = data';})
 
@@ -43,11 +51,11 @@ module Disasm = struct
      | Ok r -> match r with
        | mem', Some insn, `finished -> Ok (mem',insn)
        | _, None, _ ->
-         Error (Error.of_string "nothing was disasmed")
+         Or_error.error_string "nothing was disasmed"
        | _, _, `left _ ->
-         Error (Error.of_string "overloaded chunk")) |> function
+         Or_error.error_string "overloaded chunk") |> function
     | Ok r -> Ok r
-    | Error er -> Error (`Disasm_error, [`Error er])
+    | Error er -> Error (disasm_error er)
 
   let insn_name = Dis.Insn.name
 end
@@ -88,7 +96,7 @@ class context stat policy trace = object(self:'s)
         match Veri_policy.denied policy name events events' with
         | [] -> self#finish_step (Veri_stat.success stat name)
         | results ->
-          let er = `Soundness, [`Name name; `Diff results] in
+          let er = unsound_semantic name results in
           let stat = Veri_stat.notify stat er in
           let report = self#make_report results in
           Signal.send (snd stream) report;
@@ -280,7 +288,7 @@ class ['a] t arch dis =
       match lift mem insn with
       | Error er ->
         SM.update (fun c ->
-            c#notify_error (`Incompleteness, [`Name name; `Error er]))
+            c#notify_error (incomplete_semantic name er))
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
         self#eval bil
@@ -289,7 +297,7 @@ class ['a] t arch dis =
       self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
       match memory_of_chunk endian chunk with
       | Error er ->
-        SM.update (fun c -> c#notify_error (`Disasm_error, [`Error er]))
+        SM.update (fun c -> c#notify_error (disasm_error er))
       | Ok mem ->
         match Disasm.insn dis mem with
         | Error er -> SM.update (fun c -> c#notify_error er)
