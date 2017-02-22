@@ -15,7 +15,6 @@ Library veri
   Path:           lib
   FindLibName:    bap-veri
   Modules:        Veri,
-                  Veri_info,
                   Veri_error,
                   Veri_policy,
                   Veri_report,
