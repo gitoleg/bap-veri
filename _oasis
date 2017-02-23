@@ -17,6 +17,7 @@ Library veri
   Modules:        Veri,
                   Veri_chunki,
                   Veri_error,
+                  Veri_info,
                   Veri_policy,
                   Veri_report,
                   Veri_rule,
