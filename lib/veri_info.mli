@@ -49,20 +49,24 @@ end
 
 module Error : sig
 
-  (* module Test_case : sig *)
-  (*   type t *)
-  (*   val is_succeed : t *)
-  (*   val is_unsound : t *)
-  (*   val is_incomplete : t *)
-  (*   val is_undisasmed : t *)
-  (* end *)
-
-  (* type case = Test_case.t *)
-
-  type result = Veri.result
+  type result = Veri_result.t
   type policy = Veri_policy.t
 
-  val eval : trace -> policy
-    -> init:'a -> f:(result -> int -> 'a -> 'a) -> 'a Or_error.t
+  module Test_case : sig
+    type t
+    type kind = Veri_result.result_kind
+    type 'a error_test = Veri_result.error_info -> int -> 'a -> 'a
+
+    val success     : (int -> 'a -> 'a) -> 'a -> 'a tag -> t
+    val unsound_sema : 'a error_test -> 'a -> 'a tag -> t
+    val unknown_sema : 'a error_test -> 'a -> 'a tag -> t
+    val disasm_error : 'a error_test -> 'a -> 'a tag -> t
+    val custom_case : (result -> int -> 'a -> 'a) -> 'a -> 'a tag -> t
+
+  end
+
+  type case = Test_case.t
+
+  val eval : trace -> policy -> case list -> value list Or_error.t
 
 end

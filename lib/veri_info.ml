@@ -42,7 +42,6 @@ module Error = struct
     type error = Veri_result.error
 
     type 'a descr = {
-      kind : kind;
       func : result -> int -> 'a -> 'a;
       init : 'a;
       tag  : 'a tag;
@@ -53,9 +52,9 @@ module Error = struct
     type 'a success_test = int -> 'a -> 'a
     type 'a error_test  = Veri_result.error_info -> int -> 'a -> 'a
 
-    let create kind func init tag = Case { kind; func; init; tag; }
+    let create func init tag = Case {func; init; tag; }
 
-    let apply case res num = match case with
+    let apply res num = function
       | Case descr ->
         let init = descr.func res num descr.init in
         let descr = {descr with init} in
@@ -63,10 +62,6 @@ module Error = struct
 
     let extract case = match case with
       | Case descr -> Value.create descr.tag descr.init
-
-    let success_case f init tag =
-      let f res = f in
-      create `Success f init tag
 
     let application_error from k =
       let s = Sexp.to_string (Veri_result.sexp_of_result_kind k) in
@@ -79,49 +74,48 @@ module Error = struct
         | `Error (k, _) -> (k :> kind) in
       kind
 
-    let checked_error_case from f must_kind =
-      fun res num init ->
-        let kind = kind_of_result res in
+    let success f init tag =
+      let checked res num init =
         match res with
+        | `Success -> f num init
+        | `Error _ -> init in
+      create checked init tag
+
+    let checked_err must_kind f init tag =
+      let checked res num init = match res with
         | `Error (kind, info) when kind = must_kind ->
-          f num info init
-        | `Error _ | `Success -> application_error from kind
+          f info num init
+        | _ -> init in
+      create checked init tag
 
-    let unsound_sema_case f init tag =
-      let checked = checked_error_case "unsound semantic case" f `Unsound_sema in
-      create `Unsound_sema checked init tag
-
-    let unknown_sema_case f init tag =
-      let checked = checked_error_case "unknown semantic case" f `Unknown_sema in
-      create `Unknown_sema checked init tag
-
-    let undiasm_case f init tag =
-      let checked = checked_error_case "undisasmed case" f `Disasm_error in
-      create `Disasm_error checked init tag
-
-
+    let unsound_sema f init tag = checked_err `Unsound_sema f init tag
+    let unknown_sema f init tag = checked_err `Unknown_sema f init tag
+    let disasm_error f init tag = checked_err `Disasm_error f init tag
+    let custom_case = create
   end
-
 
   type case = Test_case.t
   type policy = Veri_policy.t
 
-  class ['a] context policy trace (f:(result -> int -> 'a -> 'a)) init =
+  class context policy trace cases =
     object (self : 's)
       inherit Veri.context policy trace as super
 
-      val acc : 'a  = init
       val num = 0
+      val cases : case list = cases
 
       method increment = {< num = num + 1 >}
-      method apply res = {< acc = f res num acc >}
+      method apply res =
+        let cases =
+          List.map ~f:(Test_case.apply res num) cases in
+        {< cases = cases >}
 
       method! update_result res =
         let self = super#update_result res in
         let self = self#apply res in
         self#increment
 
-      method result = acc
+      method result = cases
     end
 
   let arch_of_trace trace =
@@ -129,18 +123,17 @@ module Error = struct
     | None -> Or_error.error_string "trace of unknown arch"
     | Some arch -> Ok arch
 
-  let eval trace policy ~init ~f =
+  let eval trace policy cases =
     arch_of_trace trace >>= fun arch ->
     Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
         let dis = Dis.store_asm dis |> Dis.store_kinds in
-        let ctxt = new context policy trace f init in
+        let ctxt = new context policy trace cases in
         let veri = new Veri.t arch dis in
         let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
-        Ok ctxt'#result)
+        Ok ctxt'#result) >>= fun cases ->
+    Ok (List.map ~f:Test_case.extract cases)
 
 end
-
-
 
 module Binary = struct
   open SM.Monad_infix
