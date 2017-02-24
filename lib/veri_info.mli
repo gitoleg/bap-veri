@@ -57,16 +57,15 @@ module Error : sig
     type kind = Veri_result.result_kind
     type 'a error_test = Veri_result.error_info -> int -> 'a -> 'a
 
-    val success     : (int -> 'a -> 'a) -> 'a -> 'a tag -> t
-    val unsound_sema : 'a error_test -> 'a -> 'a tag -> t
-    val unknown_sema : 'a error_test -> 'a -> 'a tag -> t
-    val disasm_error : 'a error_test -> 'a -> 'a tag -> t
-    val custom_case : (result -> int -> 'a -> 'a) -> 'a -> 'a tag -> t
-
+    val success     : (int -> 'a -> 'a) -> init:'a -> 'a tag -> t
+    val unsound_sema : 'a error_test -> init:'a -> 'a tag -> t
+    val unknown_sema : 'a error_test -> init:'a -> 'a tag -> t
+    val disasm_error : 'a error_test -> init:'a -> 'a tag -> t
+    val custom : (result -> int -> 'a -> 'a) -> init:'a -> 'a tag -> t
   end
 
   type case = Test_case.t
 
-  val eval : trace -> policy -> case list -> value list Or_error.t
+  val eval : trace -> policy -> case array -> value array Or_error.t
 
 end

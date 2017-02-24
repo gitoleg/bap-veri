@@ -52,7 +52,7 @@ module Error = struct
     type 'a success_test = int -> 'a -> 'a
     type 'a error_test  = Veri_result.error_info -> int -> 'a -> 'a
 
-    let create func init tag = Case {func; init; tag; }
+    let create func ~init tag = Case {func; init; tag; }
 
     let apply res num = function
       | Case descr ->
@@ -74,7 +74,7 @@ module Error = struct
         | `Error (k, _) -> (k :> kind) in
       kind
 
-    let success f init tag =
+    let success f ~init tag =
       let checked res num init =
         match res with
         | `Success -> f num init
@@ -88,10 +88,10 @@ module Error = struct
         | _ -> init in
       create checked init tag
 
-    let unsound_sema f init tag = checked_err `Unsound_sema f init tag
-    let unknown_sema f init tag = checked_err `Unknown_sema f init tag
-    let disasm_error f init tag = checked_err `Disasm_error f init tag
-    let custom_case = create
+    let unsound_sema f ~init tag = checked_err `Unsound_sema f init tag
+    let unknown_sema f ~init tag = checked_err `Unknown_sema f init tag
+    let disasm_error f ~init tag = checked_err `Disasm_error f init tag
+    let custom = create
   end
 
   type case = Test_case.t
@@ -102,12 +102,12 @@ module Error = struct
       inherit Veri.context policy trace as super
 
       val num = 0
-      val cases : case list = cases
+      val cases : case array = cases
 
       method increment = {< num = num + 1 >}
       method apply res =
         let cases =
-          List.map ~f:(Test_case.apply res num) cases in
+          Array.map ~f:(Test_case.apply res num) cases in
         {< cases = cases >}
 
       method! update_result res =
@@ -131,7 +131,7 @@ module Error = struct
         let veri = new Veri.t arch dis in
         let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
         Ok ctxt'#result) >>= fun cases ->
-    Ok (List.map ~f:Test_case.extract cases)
+    Ok (Array.map ~f:Test_case.extract cases)
 
 end
 
