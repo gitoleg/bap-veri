@@ -1,45 +1,68 @@
 open Core_kernel.Std
 open Bap.Std
+open Bap_traces.Std
 
-type insn_info
-type 'a freq
-
-module Insn_info : sig
-  type t = insn_info
-  val of_bytes : string -> t
-  val of_instr : Insn.t -> t
-  val to_instr : t -> Insn.t option
-  val to_bytes : t -> string option
-  val index : t -> int
-end
-
-module Frequency : sig
-  type 'a t = 'a freq
-  val all : 'a t -> ('a * int) list
-  val count : 'a t -> f:('a -> bool) -> int
-end
-
-module type S = sig
+module Insn_freq : sig
   type t
-  val freq : t -> insn_info freq
-  val feed : t -> insn_info -> t
+  val create : unit -> t
+  val feed   : t -> insn -> t
+  val print : t -> unit
 end
 
-module Static_info : sig
-  include S
-  val of_path : string -> t
+module Binary : sig
+  type 'a u = 'a Bil.Result.u
+  type insns = insn seq
+
+  module Base : sig
+    class context : insns -> object ('s)
+        method next_insn  : ('s * insn) option
+        method with_insns : insns -> 's
+      end
+
+    class ['a] t : object
+      constraint 'a = #context
+      method eval_insn  : insn -> 'a u
+      method eval_insns : insns -> 'a u
+    end
+  end
+
+
+  class context : insns -> object ('s)
+      inherit Base.context
+      method add_insn : insn -> 's
+      method freq : Insn_freq.t
+    end
+
+  class ['a] t : object
+    constraint 'a = #context
+    inherit ['a] Base.t
+  end
 end
 
-module Trace_info : sig
-  include S
-  val of_seq : event Seq.t -> t
-  val events : t -> insn_info list
+module Trace : sig
+  class context : trace -> object('s)
+      inherit Veri_chunki.context
+      method freq  : Insn_freq.t
+      method order : insn list
+    end
 end
 
-module Errors_info : sig
-  type t
-  type kind = Disassembler | Semantic_soundness | Semantic_completness
-  val freq : t -> kind freq
-  val feed : insn_info -> Error.t -> kind -> t
-  val list : t -> (insn_info * kind * Error.t) list
+module Error : sig
+
+  (* module Test_case : sig *)
+  (*   type t *)
+  (*   val is_succeed : t *)
+  (*   val is_unsound : t *)
+  (*   val is_incomplete : t *)
+  (*   val is_undisasmed : t *)
+  (* end *)
+
+  (* type case = Test_case.t *)
+
+  type result = Veri.result
+  type policy = Veri_policy.t
+
+  val eval : trace -> policy
+    -> init:'a -> f:(result -> int -> 'a -> 'a) -> 'a Or_error.t
+
 end

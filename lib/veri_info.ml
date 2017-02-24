@@ -1,81 +1,14 @@
 open Core_kernel.Std
 open Bap.Std
-open Regular.Std
+open Bap_traces.Std
 
 module SM = Monad.State
 
-module Insn_info = struct
-
-  type e =
-    | Full of Insn.t
-    | Raw of string
-  [@@deriving bin_io, sexp]
-
-  type t = int * e [@@deriving bin_io, sexp]
-
-  let make =
-    let i = ref 0 in
-    fun insn ->
-      let r = !i, insn in
-      incr i;
-      r
-
-  let of_bytes s = make (Raw s)
-  let of_instr i = make (Full i)
-  let to_instr (_,i) = match i with | Full i -> Some i | _ -> None
-  let to_bytes (_,i) = match i with | Raw i -> Some i | _ -> None
-  let index = fst
-
-  include Regular.Make(struct
-      type nonrec t = t [@@deriving bin_io, sexp]
-
-      let compare = compare
-      let hash = Hashtbl.hash
-      let module_name = Some "Veri_info"
-      let version = "0.1"
-      let pp fmt t = ()
-    end)
-
-end
-
-type insn_info = Insn_info.t
-type 'a freq = ('a, int) Hashtbl.t
-
-module type S = sig
-  type t
-  val freq : t -> insn_info freq
-  val feed : t -> insn_info -> t
-end
-
-module Static = struct
-  type t
-  let of_path path = failwith "unimplemented"
-  let freq t = failwith "unimplemented"
-end
-
-module Frequency = struct
-  type 'a t = 'a freq
-
-  let all t = Hashtbl.to_alist t
-  let count ~f t = Hashtbl.count ~f t
-
-end
-
 module Dis = Disasm_expert.Basic
-
-let abstract_of_trace policy arch trace =
-  let open Or_error in
-  Dis.create ~backend:"llvm" (Arch.to_string arch) >>= fun dis ->
-  let dis = Dis.store_asm dis |> Dis.store_kinds in
-  let ctxt = new Veri.context policy trace in
-  let veri = new Veri.t arch dis in
-  let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
-  Ok ()
-
-
 
 module Insn_freq = struct
 
+  (** TODO: consider a hash table here *)
   type t = int Insn.Map.t
 
   let create () = Insn.Map.empty
@@ -86,68 +19,186 @@ module Insn_freq = struct
         | None -> Some 1
         | Some cnt -> Some (cnt + 1))
 
+  let length t = Map.length t
+
+  let number t =
+    Map.fold ~f:(fun ~key ~data num -> num + data) ~init:0 t
+
+  (** TODO : remove this  *)
+
+  let print t =
+    printf "length is %d; number is %d\n" (length t) (number t)
+
+end
+
+module Error = struct
+  open Or_error
+
+  type result = Veri_result.t
+
+  module Test_case = struct
+    type kind = Veri_result.result_kind
+
+    type error = Veri_result.error
+
+    type 'a descr = {
+      kind : kind;
+      func : result -> int -> 'a -> 'a;
+      init : 'a;
+      tag  : 'a tag;
+    }
+
+    type t = | Case : 'a descr -> t
+
+    type 'a success_test = int -> 'a -> 'a
+    type 'a error_test  = Veri_result.error_info -> int -> 'a -> 'a
+
+    let create kind func init tag = Case { kind; func; init; tag; }
+
+    let apply case res num = match case with
+      | Case descr ->
+        let init = descr.func res num descr.init in
+        let descr = {descr with init} in
+        Case descr
+
+    let extract case = match case with
+      | Case descr -> Value.create descr.tag descr.init
+
+    let success_case f init tag =
+      let f res = f in
+      create `Success f init tag
+
+    let application_error from k =
+      let s = Sexp.to_string (Veri_result.sexp_of_result_kind k) in
+      eprintf "aplication error while applying %s to %s\n" from s;
+      exit 1
+
+    let kind_of_result : result -> kind = fun r ->
+      let kind = match r with
+        | `Success as k -> k
+        | `Error (k, _) -> (k :> kind) in
+      kind
+
+    let checked_error_case from f must_kind =
+      fun res num init ->
+        let kind = kind_of_result res in
+        match res with
+        | `Error (kind, info) when kind = must_kind ->
+          f num info init
+        | `Error _ | `Success -> application_error from kind
+
+    let unsound_sema_case f init tag =
+      let checked = checked_error_case "unsound semantic case" f `Unsound_sema in
+      create `Unsound_sema checked init tag
+
+    let unknown_sema_case f init tag =
+      let checked = checked_error_case "unknown semantic case" f `Unknown_sema in
+      create `Unknown_sema checked init tag
+
+    let undiasm_case f init tag =
+      let checked = checked_error_case "undisasmed case" f `Disasm_error in
+      create `Disasm_error checked init tag
+
+
+  end
+
+
+  type case = Test_case.t
+  type policy = Veri_policy.t
+
+  class ['a] context policy trace (f:(result -> int -> 'a -> 'a)) init =
+    object (self : 's)
+      inherit Veri.context policy trace as super
+
+      val acc : 'a  = init
+      val num = 0
+
+      method increment = {< num = num + 1 >}
+      method apply res = {< acc = f res num acc >}
+
+      method! update_result res =
+        let self = super#update_result res in
+        let self = self#apply res in
+        self#increment
+
+      method result = acc
+    end
+
+  let arch_of_trace trace =
+    match Dict.find (Trace.meta trace) Meta.arch with
+    | None -> Or_error.error_string "trace of unknown arch"
+    | Some arch -> Ok arch
+
+  let eval trace policy ~init ~f =
+    arch_of_trace trace >>= fun arch ->
+    Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
+        let dis = Dis.store_asm dis |> Dis.store_kinds in
+        let ctxt = new context policy trace f init in
+        let veri = new Veri.t arch dis in
+        let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
+        Ok ctxt'#result)
+
 end
 
 
-module Binary = struct
 
+module Binary = struct
   open SM.Monad_infix
 
   type 'a u = 'a Bil.Result.u
+  type insns = insn seq
 
-  type elt = mem * insn
-  type s = elt seq
+  module Base = struct
 
+    class context insns = object (self : 's)
+      val insns : insn seq = insns
 
-  (** is it realy a good idea to use dis type here ??  *)
-  class base_context dis = object (self : 'a)
+      method next_insn = match Seq.next insns with
+        | None -> None
+        | Some (insn, insns) -> Some ({< insns = insns; >}, insn)
 
-    val insns = Disasm.insns dis
+      method with_insns insns : 's = {< insns = insns >}
+    end
 
-    method next_insn = match Seq.next insns with
-      | None -> None
-      | Some (insn, insns) -> Some ({< insns = insns; >}, insn)
+    class ['a] t = object (self)
 
-    method with_dis dis = {< insns = Disasm.insns dis >}
+      constraint 'a = #context
 
+      method eval_insn (insn : Insn.t) : 'a u = SM.return ()
+
+      method eval_insns insns =
+        SM.update (fun ctxt -> ctxt#with_insns insns) >>= fun () -> self#run
+
+      method private run : 'a u =
+        SM.get () >>= fun ctxt ->
+        match ctxt#next_insn with
+        | None -> SM.return ()
+        | Some (ctxt, insn) ->
+          SM.put ctxt >>= fun () -> self#eval_insn insn >>= fun () -> self#run
+    end
   end
 
-  class ['a] base_t = object (self)
-
-    method eval_insn (insn : mem * Insn.t) : unit u = SM.return ()
-
-    method eval_dis (dis : Disasm.t) : 'a u =
-      SM.update (fun ctxt -> ctxt#with_dis dis) >>= fun () -> self#run
-
-    method private run : 'a u =
-      SM.get () >>= fun ctxt ->
-      match ctxt#next_insn with
-      | None -> SM.return ()
-      | Some (ctxt, insn) ->
-        SM.put ctxt >>= fun () -> self#eval_insn insn >>= fun () -> self#run
-  end
-
-
-  class context dis = object(self : 's)
-    inherit base_context dis as super
+  class context insn = object(self : 's)
+    inherit Base.context insn as super
 
     val insn_freq : Insn_freq.t = Insn_freq.create ()
 
     method add_insn insn =
       {< insn_freq = Insn_freq.feed insn_freq insn >}
 
+    method freq = insn_freq
+
   end
 
   class ['a] t = object (self)
-    constraint 'a = #base_context
-    inherit ['a] base_t as super
+    constraint 'a = #context
+    inherit ['a] Base.t as super
 
     method! eval_insn insn =
       super#eval_insn insn >>= fun () ->
       SM.update (fun c -> c#add_insn insn)
 
   end
-
 end
 
 
@@ -159,8 +210,8 @@ module Trace = struct
     val insns : Insn_freq.t = Insn_freq.create ()
     val queue : Insn.t Queue.t = Queue.create ()
 
-    method! set_insn insn : 's =
-      let s = super#set_insn insn in
+    method! update_insn insn : 's =
+      let s = super#update_insn insn in
       match insn with
       | None -> s
       | Some insn ->
@@ -168,16 +219,12 @@ module Trace = struct
         Queue.enqueue queue insn;
         {< insns = Insn_freq.feed insns insn >}
 
+    method freq = insns
+
+    method order = Queue.to_list queue
+
   end
 
   class ['a] t = ['a] Veri_chunki.t
 
-end
-
-
-module Errors = struct
-  type t
-  type kind = [ `Disasm | `Soundness | `Incompleteness ]
-  let get t kind = failwith "unimplemented"
-  let feed insn error kind = failwith "unimplemented"
 end

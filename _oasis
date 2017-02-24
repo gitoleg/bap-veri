@@ -16,7 +16,7 @@ Library veri
   FindLibName:    bap-veri
   Modules:        Veri,
                   Veri_chunki,
-                  Veri_error,
+                  Veri_result,
                   Veri_info,
                   Veri_policy,
                   Veri_report,

@@ -5,13 +5,13 @@ open Bap_traces.Std
 module SM = Monad.State
 open SM.Monad_infix
 
-type error = Veri_error.t
+type error = Veri_result.error
 type 'a u = 'a Bil.Result.u
 
 let unknown_semantic name er =
-  `Unknown_sema, er, [`Name name;]
+  `Unknown_sema, (er, [`Name name;])
 
-let disasm_error er = `Disasm_error, er, []
+let disasm_error er = `Disasm_error, (er, [])
 
 module Disasm = struct
   module Dis = Disasm_expert.Basic

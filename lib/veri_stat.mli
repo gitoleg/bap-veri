@@ -4,7 +4,7 @@ type stat = t [@@deriving bin_io, sexp]
 
 val empty : t
 val merge : t list -> t
-val notify : t -> Veri_error.t -> t
+val notify : t -> Veri_result.error -> t
 val success : t -> string -> t
 
 val pp_summary: Format.formatter -> t -> unit

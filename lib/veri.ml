@@ -12,11 +12,11 @@ type event = Trace.event [@@deriving bin_io, compare, sexp]
 type 'a u = 'a Bil.Result.u
 type 'a r = 'a Bil.Result.r
 type 'a e = (event option, 'a) SM.t
-type error = Veri_error.t
+type error = Veri_result.error
 
 let unsound_semantic name results  =
   let er = Error.of_string (sprintf "%s: unsound semantic" name) in
-  `Unsound_sema, er, [`Name name; `Diff results]
+  `Unsound_sema, (er, [`Name name; `Diff results])
 
 let create_move_event tag cell' data' =
   Value.create tag Move.({cell = cell'; data = data';})
@@ -43,7 +43,7 @@ let insn_name = function
 
 module Events = Value.Set
 
-type result = (unit, Veri_error.t) Result.t
+type result = Veri_result.t
 
 class context policy trace = object(self:'s)
   inherit Veri_chunki.context trace as super
@@ -65,7 +65,7 @@ class context policy trace = object(self:'s)
   method merge =
     match self#error with
     | Some er ->
-      let self = self#update_result (Error er) in
+      let self = self#update_result (`Error er) in
       self#cleanup
     | None -> match insn_name self#insn with
       | None -> self#cleanup
@@ -74,11 +74,11 @@ class context policy trace = object(self:'s)
         let events, events' = other#events, self#events in
         match Veri_policy.denied policy name events events' with
         | [] ->
-          let self = self#update_result (Ok ()) in
+          let self = self#update_result `Success in
           self#cleanup
         | results ->
           let er = unsound_semantic name results in
-          let self = self#update_result (Error er) in
+          let self = self#update_result (`Error er) in
           self#cleanup
 
   method discard_event: (event -> bool) -> 's = fun f ->
@@ -107,7 +107,7 @@ class verbose_context init_stat policy trace =
     | None -> ()
     | Some report -> Signal.send (snd stream) report in
 
-  let find_diff (_, _, data) = List.find_map data ~f:(function
+  let find_diff (_, (_, data)) = List.find_map data ~f:(function
       | `Diff diff -> Some diff
       | _ -> None) in
 
@@ -133,10 +133,10 @@ class verbose_context init_stat policy trace =
   method! update_result result =
     let self = super#update_result result in
     match result with
-    | Ok () ->
+    | `Success ->
       let name = Option.value_exn (insn_name self#insn) in
       {< stat = Veri_stat.success stat name >}
-    | Error er ->
+    | `Error er ->
       send_report stream (self#make_report er);
       let stat = Veri_stat.notify stat er in
       self#update_stat stat

@@ -3,7 +3,7 @@ open Bap.Std
 open Bap_traces.Std
 open Bap_future.Std
 
-type result = (unit, Veri_error.t) Result.t
+type result = Veri_result.t
 
 class context: Veri_policy.t -> Trace.t -> object('s)
     inherit Veri_chunki.context
@@ -32,5 +32,5 @@ class verbose_context: Veri_stat.t -> Veri_policy.t -> Trace.t -> object('s)
     method update_stat : Veri_stat.t -> 's
     method stat : Veri_stat.t
     method reports : Veri_report.t stream
-    method make_report : Veri_error.t -> Veri_report.t option
+    method make_report : Veri_result.error -> Veri_report.t option
   end
