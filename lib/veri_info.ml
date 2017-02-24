@@ -3,7 +3,6 @@ open Bap.Std
 open Bap_traces.Std
 
 module SM = Monad.State
-
 module Dis = Disasm_expert.Basic
 
 module Insn_freq = struct
@@ -19,13 +18,14 @@ module Insn_freq = struct
         | None -> Some 1
         | Some cnt -> Some (cnt + 1))
 
+  (** TODO : remove this  *)
   let length t = Map.length t
 
+  (** TODO : remove this  *)
   let number t =
     Map.fold ~f:(fun ~key ~data num -> num + data) ~init:0 t
 
   (** TODO : remove this  *)
-
   let print t =
     printf "length is %d; number is %d\n" (length t) (number t)
 
@@ -154,7 +154,6 @@ module Binary = struct
     end
 
     class ['a] t = object (self)
-
       constraint 'a = #context
 
       method eval_insn (insn : Insn.t) : 'a u = SM.return ()
@@ -180,7 +179,6 @@ module Binary = struct
       {< insn_freq = Insn_freq.feed insn_freq insn >}
 
     method freq = insn_freq
-
   end
 
   class ['a] t = object (self)
@@ -213,11 +211,7 @@ module Trace = struct
         {< insns = Insn_freq.feed insns insn >}
 
     method freq = insns
-
     method order = Queue.to_list queue
-
   end
-
-  class ['a] t = ['a] Veri_chunki.t
 
 end

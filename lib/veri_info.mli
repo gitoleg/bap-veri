@@ -9,6 +9,7 @@ module Insn_freq : sig
   val print : t -> unit
 end
 
+
 module Binary : sig
   type 'a u = 'a Bil.Result.u
   type insns = insn seq
@@ -25,7 +26,6 @@ module Binary : sig
       method eval_insns : insns -> 'a u
     end
   end
-
 
   class context : insns -> object ('s)
       inherit Base.context
@@ -48,7 +48,6 @@ module Trace : sig
 end
 
 module Error : sig
-
   type result = Veri_result.t
   type policy = Veri_policy.t
 
@@ -57,11 +56,16 @@ module Error : sig
     type kind = Veri_result.result_kind
     type 'a error_test = Veri_result.error_info -> int -> 'a -> 'a
 
+    (** [custom ~f ~init ~tag] - describes a custom test, where
+        [f] is applied to result of verification, index of
+        instruction in a trace, and to result of previous calls
+        of [f]. *)
+    val custom : (result -> int -> 'a -> 'a) -> init:'a -> 'a tag -> t
+
     val success     : (int -> 'a -> 'a) -> init:'a -> 'a tag -> t
     val unsound_sema : 'a error_test -> init:'a -> 'a tag -> t
     val unknown_sema : 'a error_test -> init:'a -> 'a tag -> t
     val disasm_error : 'a error_test -> init:'a -> 'a tag -> t
-    val custom : (result -> int -> 'a -> 'a) -> init:'a -> 'a tag -> t
   end
 
   type case = Test_case.t
