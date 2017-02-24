@@ -9,8 +9,7 @@ type kind = [
 type attr = [
   | `Name of string
   | `Diff of Veri_policy.result list
-  | `Error of Error.t
 ] [@@deriving bin_io, compare, sexp]
 
-type t = kind * attr list
+type t = kind * Error.t * attr list
 [@@deriving bin_io, compare, sexp]

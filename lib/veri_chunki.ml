@@ -9,9 +9,9 @@ type error = Veri_error.t
 type 'a u = 'a Bil.Result.u
 
 let unknown_semantic name er =
-  `Unknown_sema, [`Name name; `Error er]
+  `Unknown_sema, er, [`Name name;]
 
-let disasm_error er = `Disasm_error, [`Error er]
+let disasm_error er = `Disasm_error, er, []
 
 module Disasm = struct
   module Dis = Disasm_expert.Basic
@@ -41,12 +41,12 @@ class context trace = object(self:'s)
   val insn  : Disasm.insn option = None
   val bil   : bil = []
 
-  method set_bil  b = {< bil = b >}
-  method set_insn s = {< insn = s >}
   method notify_error er = {< error = er >}
+  method update_insn s = {< insn = s >}
+  method update_bil  b = {< bil = b >}
+  method error = error
   method insn  = insn
   method bil   = bil
-  method error = error
 end
 
 let lift_of_arch arch =
@@ -67,13 +67,13 @@ class ['a] t arch dis =
 
     method private eval_insn (mem, insn) =
       let name = Disasm.insn_name insn in
-      SM.update (fun c -> c#set_insn (Some insn)) >>= fun () ->
+      SM.update (fun c -> c#update_insn (Some insn)) >>= fun () ->
       match lift mem insn with
       | Error er ->
         SM.update (fun c ->
             c#notify_error @@ Some (unknown_semantic name er))
       | Ok bil ->
-        SM.update (fun c -> c#set_bil bil) >>= fun () ->
+        SM.update (fun c -> c#update_bil bil) >>= fun () ->
         self#eval bil
 
     method! eval_exec chunk =

@@ -42,7 +42,7 @@ let name_of_data data =
       |`Name s -> Some s
       | _ -> None) data
 
-let notify t (kind, data) = match kind with
+let notify t (kind, _, data) = match kind with
   | `Disasm_error -> { t with undisasm = t.undisasm + 1 }
   | `Unsound_sema ->
     let name = Option.value_exn (name_of_data data) in

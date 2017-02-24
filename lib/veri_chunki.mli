@@ -15,12 +15,12 @@ class context: Trace.t -> object('s)
     inherit Veri_traci.context
 
     method notify_error : Veri_error.t option -> 's
-    method set_bil      : bil -> 's
-    method set_insn     : Disasm.insn option -> 's
+    method update_insn  : Disasm.insn option -> 's
+    method update_bil   : bil -> 's
 
+    method error : Veri_error.t option
     method insn  : Disasm.insn option
     method bil   : bil
-    method error : Veri_error.t option
   end
 
 class ['a] t : arch -> Disasm.t -> object('s)

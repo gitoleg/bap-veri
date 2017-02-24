@@ -15,7 +15,8 @@ type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 
 let unsound_semantic name results  =
-  `Unsound_sema, [`Name name; `Diff results]
+  let er = Error.of_string (sprintf "%s: unsound semantic" name) in
+  `Unsound_sema, er, [`Name name; `Diff results]
 
 let create_move_event tag cell' data' =
   Value.create tag Move.({cell = cell'; data = data';})
@@ -42,6 +43,8 @@ let insn_name = function
 
 module Events = Value.Set
 
+type result = (unit, Veri_error.t) Result.t
+
 class context policy trace = object(self:'s)
   inherit Veri_chunki.context trace as super
 
@@ -49,27 +52,34 @@ class context policy trace = object(self:'s)
   val other : 's option = None
   val code : Chunk.t option = None
 
+  (** TODO: better to do it private  *)
   method cleanup : 's =
     let s = {< other = None; events = Events.empty; code = None; >} in
-    let s = s#set_insn None in
-    let s = s#set_bil [] in
-    let s = s#notify_error None in
+    s#update_insn None  |> fun s ->
+    s#update_bil []     |> fun s ->
+    s#notify_error None |> fun s ->
     s#drop_pc
 
-  method notify_success = self
+  method update_result (r : result) = self
 
-  method merge = match self#error with
-    | Some er -> self#cleanup
+  method merge =
+    match self#error with
+    | Some er ->
+      let self = self#update_result (Error er) in
+      self#cleanup
     | None -> match insn_name self#insn with
       | None -> self#cleanup
       | Some name ->
         let other = Option.value_exn self#other in
         let events, events' = other#events, self#events in
         match Veri_policy.denied policy name events events' with
-        | [] -> (self#notify_success)#cleanup
+        | [] ->
+          let self = self#update_result (Ok ()) in
+          self#cleanup
         | results ->
           let er = unsound_semantic name results in
-          (self#notify_error @@ Some er)#cleanup
+          let self = self#update_result (Error er) in
+          self#cleanup
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
@@ -91,41 +101,45 @@ class context policy trace = object(self:'s)
 end
 
 
-class verbose_context init_stat policy trace = object(self:'s)
+class verbose_context init_stat policy trace =
+
+  let send_report stream = function
+    | None -> ()
+    | Some report -> Signal.send (snd stream) report in
+
+  let find_diff (_, _, data) = List.find_map data ~f:(function
+      | `Diff diff -> Some diff
+      | _ -> None) in
+
+  object(self:'s)
   inherit context policy trace as super
 
   val stat : Veri_stat.t = init_stat
   val stream = Stream.create ()
 
-  method private report_of_error (_, data) =
-    List.find_map data ~f:(function
-        | `Diff diff ->
-          Some (Veri_report.create ~bil:self#bil ~data:diff
-                  ~right:(Set.to_list self#events)
-                  ~left:(Set.to_list (Option.value_exn other)#events)
-                  ~insn:(Option.value_exn (insn_name self#insn))
-                  ~code:(Option.value_exn self#code |> Chunk.data))
-        | _ -> None)
-
-  method private send_report er =
-    match self#report_of_error er with
-    | None -> ()
-    | Some report -> Signal.send (snd stream) report
-
   method update_stat s = {< stat = s >}
 
-  method! notify_success =
-    let name = Option.value_exn (insn_name self#insn) in
-    {< stat = Veri_stat.success stat name >}
+  method make_report er : Veri_report.t option =
+    let open Option in
+    find_diff er >>= fun diff ->
+    self#other >>= fun other ->
+    insn_name self#insn >>= fun insn ->
+    self#code >>= fun code ->
+    Some (Veri_report.create ~bil:self#bil ~data:diff
+            ~right:(Set.to_list self#events)
+            ~left:(Set.to_list other#events)
+            ~insn ~code:(Chunk.data code))
 
-  method! notify_error er =
-    match er with
-    | None -> super#notify_error er
-    | Some error ->
-      self#send_report error;
-      let s = super#notify_error er in
-      let stat = Veri_stat.notify stat error in
-      s#update_stat stat
+  method! update_result result =
+    let self = super#update_result result in
+    match result with
+    | Ok () ->
+      let name = Option.value_exn (insn_name self#insn) in
+      {< stat = Veri_stat.success stat name >}
+    | Error er ->
+      send_report stream (self#make_report er);
+      let stat = Veri_stat.notify stat er in
+      self#update_stat stat
 
   method stat    = stat
   method reports = fst stream
