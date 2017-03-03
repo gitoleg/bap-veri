@@ -2,8 +2,8 @@ open Core_kernel.Std
 open Textutils.Std
 open Text_block
 
-module Abs = Veri_stat.Abs
-module Rel = Veri_stat.Rel
+module Abs = Veri_verbose.Stat.Abs
+module Rel = Veri_verbose.Stat.Rel
 
 let make_iota max =
   let rec make acc n =
