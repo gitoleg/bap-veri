@@ -32,22 +32,6 @@ module Program (O : Opts) = struct
   open Veri_options
   open O
 
-  let read_rules fname =
-    let comments = "#" in
-    let is_sensible s =
-      s <> "" && not (String.is_prefix ~prefix:comments s) in
-    let inc = In_channel.create fname in
-    let strs = In_channel.input_lines inc in
-    In_channel.close inc;
-    List.map ~f:String.strip strs
-    |> List.filter ~f:is_sensible
-    |> List.map ~f:Veri_rule.of_string_err |>
-    List.filter_map ~f:(function
-        | Ok r -> Some r
-        | Error er ->
-          Format.(fprintf std_formatter "%s\n" (Error.to_string_hum er));
-          None)
-
   let string_of_error = function
     | `Protocol_error er ->
       Printf.sprintf "protocol error: %s"
@@ -65,7 +49,7 @@ module Program (O : Opts) = struct
   let make_policy = function
     | None -> default_policy
     | Some file ->
-      read_rules file |>
+      Veri_rule.Reader.of_path file |>
       List.fold ~f:Veri_policy.add ~init:Veri_policy.empty
 
   let errors_stream s =
