@@ -125,49 +125,6 @@ class context policy trace = object(self:'s)
 
 end
 
-
-class verbose_context init_stat policy trace =
-
-  let send_report stream = function
-    | None -> ()
-    | Some report -> Signal.send (snd stream) report in
-
-  object(self:'s)
-  inherit context policy trace as super
-
-  val stat : Veri_stat.t = init_stat
-  val stream = Stream.create ()
-
-  method update_stat s = {< stat = s >}
-
-  method make_report diff : Veri_report.t option =
-    let open Option in
-    self#other >>= fun other ->
-    insn_name self#insn >>= fun insn ->
-    self#code >>= fun code ->
-    Some (Veri_report.create ~bil:self#bil ~data:diff
-            ~right:(Set.to_list self#events)
-            ~left:(Set.to_list other#events)
-            ~insn ~code:(Chunk.data code))
-
-  method! update_result result =
-    let self = super#update_result result in
-    match Veri_result.(result.kind) with
-    | `Success ->
-      let name = Option.value_exn (insn_name self#insn) in
-      {< stat = Veri_stat.success stat name >}
-    | #Veri_result.error_kind as kind ->
-      let stat = Veri_stat.notify stat kind dict in
-      match Dict.find self#dict Veri_result.diff with
-      | None -> self#update_stat stat
-      | Some diff ->
-        send_report stream (self#make_report diff);
-        self#update_stat stat
-
-  method stat    = stat
-  method reports = fst stream
-end
-
 let mem_of_arch arch =
   let module Target = (val target_of_arch arch) in
   Target.CPU.mem

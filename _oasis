@@ -19,9 +19,7 @@ Library veri
                   Veri_result,
                   Veri_info,
                   Veri_policy,
-                  Veri_report,
                   Veri_rule,
-                  Veri_stat,
                   Veri_traci
   CompiledObject: best
   Install:        true
@@ -45,6 +43,8 @@ Executable "bap-veri"
   MainIs:         veri_main.ml
   CompiledObject: best
   Install:        true
+  NativeOpt:      -pp 'ppx-jane -dump-ast'
+  ByteOpt:        -pp 'ppx-jane -dump-ast'
   BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner
 
 Executable run_tests

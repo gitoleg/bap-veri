@@ -24,6 +24,52 @@ module Veri_options = struct
   } [@@deriving fields]
 end
 
+let insn_name = Disasm_expert.Basic.Insn.name
+
+class verbose_context init_stat policy trace =
+
+  let send_report stream = function
+    | None -> ()
+    | Some report -> Signal.send (snd stream) report in
+
+  object(self:'s)
+  inherit Veri.context policy trace as super
+
+  val stat : Veri_stat.t = init_stat
+  val stream = Stream.create ()
+
+  method update_stat s = {< stat = s >}
+
+  method make_report diff : Veri_report.t option =
+    let open Option in
+    self#other >>= fun other ->
+    self#insn >>= fun insn ->
+    self#code >>= fun code ->
+    let insn = insn_name insn in
+    Some (Veri_report.create ~bil:self#bil ~data:diff
+            ~right:(Set.to_list self#events)
+            ~left:(Set.to_list other#events)
+            ~insn ~code:(Chunk.data code))
+
+  method! update_result result =
+    let self = super#update_result result in
+    match Veri_result.(result.kind) with
+    | `Success ->
+      let name = insn_name @@ Option.value_exn self#insn in
+      {< stat = Veri_stat.success stat name >}
+    | #Veri_result.error_kind as kind ->
+      let stat = Veri_stat.notify stat kind self#dict in
+      match Dict.find self#dict Veri_result.diff with
+      | None -> self#update_stat stat
+      | Some diff ->
+        send_report stream (self#make_report diff);
+        self#update_stat stat
+
+  method stat    = stat
+  method reports = fst stream
+end
+
+
 module type Opts = sig
   val options : Veri_options.t
 end
@@ -72,7 +118,7 @@ module Program (O : Opts) = struct
         Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
             let dis = Dis.store_asm dis |> Dis.store_kinds in
             let stat = Veri_stat.empty in
-            let ctxt = new Veri.verbose_context stat policy trace in
+            let ctxt = new verbose_context stat policy trace in
             let veri = new Veri.t arch dis in
             if options.show_errs then errors_stream ctxt#reports;
             let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in

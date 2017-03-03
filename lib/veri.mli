@@ -26,11 +26,3 @@ class ['a] t : arch -> Veri_chunki.Disasm.t -> object('s)
     constraint 'a = #context
     inherit ['a] Veri_chunki.t
   end
-
-class verbose_context: Veri_stat.t -> Veri_policy.t -> Trace.t -> object('s)
-    inherit context
-    method update_stat : Veri_stat.t -> 's
-    method stat : Veri_stat.t
-    method reports : Veri_report.t stream
-    method make_report : Veri_policy.result list -> Veri_report.t option
-  end
