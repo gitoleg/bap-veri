@@ -5,10 +5,10 @@ open Bap_traces.Std
 module Insn_freq : sig
   type t
   val create : unit -> t
+  val insns  : t -> int Insn.Map.t
   val feed   : t -> insn -> t
-  val print : t -> unit
+  val pp : Format.formatter -> t -> unit
 end
-
 
 module Binary : sig
   type 'a u = 'a Bil.Result.u
@@ -47,29 +47,20 @@ module Trace : sig
     end
 end
 
-module Error : sig
-  type result = Veri_result.t
-  type policy = Veri_policy.t
+module Test_case : sig
+  type t
+  type 'a error_test = dict -> int -> 'a -> 'a
 
-  module Test_case : sig
-    type t
-    type kind = Veri_result.result_kind
-    type 'a error_test = Veri_result.error_info -> int -> 'a -> 'a
+  (** [custom ~f ~init ~tag] - describes a custom test, where
+      [f] is applied to result of verification, index of
+      instruction in a trace, and to result of previous calls
+      of [f]. *)
+  val custom : (Veri_result.t -> int -> 'a -> 'a) -> init:'a -> 'a tag -> t
 
-    (** [custom ~f ~init ~tag] - describes a custom test, where
-        [f] is applied to result of verification, index of
-        instruction in a trace, and to result of previous calls
-        of [f]. *)
-    val custom : (result -> int -> 'a -> 'a) -> init:'a -> 'a tag -> t
+  val success     : (int -> 'a -> 'a) -> init:'a -> 'a tag -> t
+  val unsound_sema : 'a error_test -> init:'a -> 'a tag -> t
+  val unknown_sema : 'a error_test -> init:'a -> 'a tag -> t
+  val disasm_error : 'a error_test -> init:'a -> 'a tag -> t
 
-    val success     : (int -> 'a -> 'a) -> init:'a -> 'a tag -> t
-    val unsound_sema : 'a error_test -> init:'a -> 'a tag -> t
-    val unknown_sema : 'a error_test -> init:'a -> 'a tag -> t
-    val disasm_error : 'a error_test -> init:'a -> 'a tag -> t
-  end
-
-  type case = Test_case.t
-
-  val eval : trace -> policy -> case array -> value array Or_error.t
-
+  val eval : trace -> Veri_policy.t -> t array -> value array Or_error.t
 end

@@ -12,7 +12,6 @@ type event = Trace.event [@@deriving bin_io, compare, sexp]
 type 'a u = 'a Bil.Result.u
 type 'a r = 'a Bil.Result.r
 type 'a e = (event option, 'a) SM.t
-type error = Veri_result.error
 
 let unsound_semantic name results  =
   let er = Error.of_string (sprintf "%s: unsound semantic" name) in
@@ -45,27 +44,49 @@ module Events = Value.Set
 
 type result = Veri_result.t
 
+let update_dict dict tag x = match Dict.add dict tag x with
+  | `Ok dict -> dict
+  | `Duplicate -> dict
+
+let make_result kind dict =
+  let kind = (kind :> Veri_result.kind) in
+  Veri_result.{kind; dict}
+
+let add_unsound dict name results =
+  let er = Error.of_string @@ sprintf "%s: unsound semantic" name in
+  let dict = update_dict dict Veri_result.error er in
+  update_dict dict Veri_result.diff results
+
 class context policy trace = object(self:'s)
   inherit Veri_chunki.context trace as super
 
   val events = Events.empty
   val other : 's option = None
   val code : Chunk.t option = None
+  val dict : dict = Dict.empty
 
-  (** TODO: better to do it private  *)
-  method cleanup : 's =
-    let s = {< other = None; events = Events.empty; code = None; >} in
-    s#update_insn None  |> fun s ->
-    s#update_bil []     |> fun s ->
-    s#notify_error None |> fun s ->
+  method cleanup =
+    let s = {< other = None; dict = Dict.empty;
+               events = Events.empty;  code = None; >} in
     s#drop_pc
 
   method update_result (r : result) = self
+  method with_dict dict : 's = {< dict = dict >}
+
+  method! update_insn insn =
+    let self = super#update_insn insn in
+    match self#insn with
+    | None -> self
+    | Some x ->
+      self#with_dict @@
+      update_dict dict Veri_result.insn (Insn.of_basic x)
 
   method merge =
     match self#error with
-    | Some er ->
-      let self = self#update_result (`Error er) in
+    | Some (kind, er) ->
+      let self = self#with_dict @@
+        update_dict dict Veri_result.error er in
+      let self = self#update_result @@ make_result kind self#dict in
       self#cleanup
     | None -> match insn_name self#insn with
       | None -> self#cleanup
@@ -74,11 +95,11 @@ class context policy trace = object(self:'s)
         let events, events' = other#events, self#events in
         match Veri_policy.denied policy name events events' with
         | [] ->
-          let self = self#update_result `Success in
+          let self = self#update_result @@ make_result `Success dict in
           self#cleanup
         | results ->
-          let er = unsound_semantic name results in
-          let self = self#update_result (`Error er) in
+          let self = self#with_dict (add_unsound dict name results) in
+          let self = self#update_result @@ make_result `Unsound_sema self#dict in
           self#cleanup
 
   method discard_event: (event -> bool) -> 's = fun f ->
@@ -90,6 +111,7 @@ class context policy trace = object(self:'s)
     let s = {< other = Some self; events = Events.empty; >} in
     s#drop_pc
 
+  method dict  = dict
   method code  = code
   method other = other
   method events  = events
@@ -97,7 +119,10 @@ class context policy trace = object(self:'s)
   method save s  = {< other = Some s >}
   method switch  = (Option.value_exn other)#save self
   method drop_pc = self#with_pc Bil.Bot
-  method set_code c = {< code = Some c>}
+  method set_code c =
+    let dict = update_dict dict Veri_result.bytes (Chunk.data c) in
+    {< code = Some c; dict = dict >}
+
 end
 
 
@@ -107,10 +132,6 @@ class verbose_context init_stat policy trace =
     | None -> ()
     | Some report -> Signal.send (snd stream) report in
 
-  let find_diff (_, (_, data)) = List.find_map data ~f:(function
-      | `Diff diff -> Some diff
-      | _ -> None) in
-
   object(self:'s)
   inherit context policy trace as super
 
@@ -119,9 +140,8 @@ class verbose_context init_stat policy trace =
 
   method update_stat s = {< stat = s >}
 
-  method make_report er : Veri_report.t option =
+  method make_report diff : Veri_report.t option =
     let open Option in
-    find_diff er >>= fun diff ->
     self#other >>= fun other ->
     insn_name self#insn >>= fun insn ->
     self#code >>= fun code ->
@@ -132,14 +152,17 @@ class verbose_context init_stat policy trace =
 
   method! update_result result =
     let self = super#update_result result in
-    match result with
+    match Veri_result.(result.kind) with
     | `Success ->
       let name = Option.value_exn (insn_name self#insn) in
       {< stat = Veri_stat.success stat name >}
-    | `Error er ->
-      send_report stream (self#make_report er);
-      let stat = Veri_stat.notify stat er in
-      self#update_stat stat
+    | #Veri_result.error_kind as kind ->
+      let stat = Veri_stat.notify stat kind dict in
+      match Dict.find self#dict Veri_result.diff with
+      | None -> self#update_stat stat
+      | Some diff ->
+        send_report stream (self#make_report diff);
+        self#update_stat stat
 
   method stat    = stat
   method reports = fst stream

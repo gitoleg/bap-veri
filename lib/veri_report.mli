@@ -16,7 +16,7 @@ val create :
   code:string ->
   left:event list ->
   right:event list ->
-  data:(rule * matched) list -> t
+  data:Veri_policy.result list -> t
 
 val bil  : t -> bil
 val code : t -> string

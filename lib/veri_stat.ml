@@ -1,4 +1,5 @@
 open Core_kernel.Std
+open Bap.Std
 open Regular.Std
 
 module Calls = String.Map
@@ -37,18 +38,18 @@ let update_unlifted t name =
 
 let success t name = update_executed t name ~ok:1 ~er:0
 
-let name_of_data data =
-  List.find_map ~f:(function
-      |`Name s -> Some s
-      | _ -> None) data
+let name_of_dict dict =
+  match Dict.find dict Veri_result.insn with
+  | None -> None
+  | Some insn -> Some (Insn.name insn)
 
-let notify t (kind, (_, data)) = match kind with
+let notify t kind dict = match kind with
   | `Disasm_error -> { t with undisasm = t.undisasm + 1 }
   | `Unsound_sema ->
-    let name = Option.value_exn (name_of_data data) in
+    let name = Option.value_exn (name_of_dict dict) in
     update_executed t name ~ok:0 ~er:1
   | `Unknown_sema ->
-    let name = Option.value_exn (name_of_data data) in
+    let name = Option.value_exn (name_of_dict dict) in
     update_unlifted t name
 
 module Abs = struct

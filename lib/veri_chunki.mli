@@ -11,14 +11,15 @@ end
 
 type 'a u = 'a Bil.Result.u
 
+type error = Veri_result.error_kind * Error.t
+
 class context: Trace.t -> object('s)
     inherit Veri_traci.context
 
-    method notify_error : Veri_result.error option -> 's
-    method update_insn  : Disasm.insn option -> 's
-    method update_bil   : bil -> 's
-
-    method error : Veri_result.error option
+    method notify_error : error option -> 's
+    method update_insn  : Disasm.insn Or_error.t -> 's
+    method update_bil   : bil Or_error.t -> 's
+    method error : error option
     method insn  : Disasm.insn option
     method bil   : bil
   end

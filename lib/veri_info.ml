@@ -7,10 +7,10 @@ module Dis = Disasm_expert.Basic
 
 module Insn_freq = struct
 
-  (** TODO: consider a hash table here *)
   type t = int Insn.Map.t
 
   let create () = Insn.Map.empty
+  let insns : t -> int Insn.Map.t = fun t -> t
 
   let feed t insn =
     Map.change t insn
@@ -18,96 +18,63 @@ module Insn_freq = struct
         | None -> Some 1
         | Some cnt -> Some (cnt + 1))
 
-  (** TODO : remove this  *)
-  let length t = Map.length t
-
-  (** TODO : remove this  *)
-  let number t =
-    Map.fold ~f:(fun ~key ~data num -> num + data) ~init:0 t
-
-  (** TODO : remove this  *)
-  let print t =
-    printf "length is %d; number is %d\n" (length t) (number t)
-
+  let pp fmt t =
+    let open Format in
+    let ppi fmt insn num =
+      printf "%a : %d;\n" Insn.pp insn num in
+    Map.iteri ~f:(fun ~key ~data -> ppi fmt key data) t
 end
 
-module Error = struct
-  open Or_error
+module Test_case = struct
+  type 'a descr = {
+    func : Veri_result.t -> int -> 'a -> 'a;
+    init : 'a;
+    tag  : 'a tag;
+  }
+  type t = | Case : 'a descr -> t
+  type 'a error_test  = dict -> int -> 'a -> 'a
 
-  type result = Veri_result.t
+  let create func ~init tag = Case {func; init; tag; }
 
-  module Test_case = struct
-    type kind = Veri_result.result_kind
+  let apply res num = function
+    | Case descr ->
+      let init = descr.func res num descr.init in
+      let descr = {descr with init} in
+      Case descr
 
-    type error = Veri_result.error
+  let extract case = match case with
+    | Case descr -> Value.create descr.tag descr.init
 
-    type 'a descr = {
-      func : result -> int -> 'a -> 'a;
-      init : 'a;
-      tag  : 'a tag;
-    }
+  let success f ~init tag =
+    let checked res num init =
+      match Veri_result.(res.kind) with
+      | `Success -> f num init
+      |  _ -> init in
+    create checked init tag
 
-    type t = | Case : 'a descr -> t
+  let checked_err must_kind f init tag =
+    let checked res num init = match Veri_result.(res.kind) with
+      | #Veri_result.error_kind as er_kind when er_kind = must_kind ->
+        f Veri_result.(res.dict) num init
+      | _ -> init in
+    create checked init tag
 
-    type 'a success_test = int -> 'a -> 'a
-    type 'a error_test  = Veri_result.error_info -> int -> 'a -> 'a
-
-    let create func ~init tag = Case {func; init; tag; }
-
-    let apply res num = function
-      | Case descr ->
-        let init = descr.func res num descr.init in
-        let descr = {descr with init} in
-        Case descr
-
-    let extract case = match case with
-      | Case descr -> Value.create descr.tag descr.init
-
-    let application_error from k =
-      let s = Sexp.to_string (Veri_result.sexp_of_result_kind k) in
-      eprintf "aplication error while applying %s to %s\n" from s;
-      exit 1
-
-    let kind_of_result : result -> kind = fun r ->
-      let kind = match r with
-        | `Success as k -> k
-        | `Error (k, _) -> (k :> kind) in
-      kind
-
-    let success f ~init tag =
-      let checked res num init =
-        match res with
-        | `Success -> f num init
-        | `Error _ -> init in
-      create checked init tag
-
-    let checked_err must_kind f init tag =
-      let checked res num init = match res with
-        | `Error (kind, info) when kind = must_kind ->
-          f info num init
-        | _ -> init in
-      create checked init tag
-
-    let unsound_sema f ~init tag = checked_err `Unsound_sema f init tag
-    let unknown_sema f ~init tag = checked_err `Unknown_sema f init tag
-    let disasm_error f ~init tag = checked_err `Disasm_error f init tag
-    let custom = create
-  end
-
-  type case = Test_case.t
-  type policy = Veri_policy.t
+  let unsound_sema f ~init tag = checked_err `Unsound_sema f init tag
+  let unknown_sema f ~init tag = checked_err `Unknown_sema f init tag
+  let disasm_error f ~init tag = checked_err `Disasm_error f init tag
+  let custom = create
 
   class context policy trace cases =
     object (self : 's)
       inherit Veri.context policy trace as super
 
       val num = 0
-      val cases : case array = cases
+      val cases : t array = cases
 
       method increment = {< num = num + 1 >}
       method apply res =
         let cases =
-          Array.map ~f:(Test_case.apply res num) cases in
+          Array.map ~f:(apply res num) cases in
         {< cases = cases >}
 
       method! update_result res =
@@ -124,6 +91,7 @@ module Error = struct
     | Some arch -> Ok arch
 
   let eval trace policy cases =
+    let open Or_error in
     arch_of_trace trace >>= fun arch ->
     Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
         let dis = Dis.store_asm dis |> Dis.store_kinds in
@@ -131,7 +99,7 @@ module Error = struct
         let veri = new Veri.t arch dis in
         let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
         Ok ctxt'#result) >>= fun cases ->
-    Ok (Array.map ~f:Test_case.extract cases)
+    Ok (Array.map ~f:extract cases)
 
 end
 
@@ -203,7 +171,7 @@ module Trace = struct
 
     method! update_insn insn : 's =
       let s = super#update_insn insn in
-      match insn with
+      match self#insn with
       | None -> s
       | Some insn ->
         let insn = Insn.of_basic insn in

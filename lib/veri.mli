@@ -18,6 +18,8 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     method drop_pc  : 's
     method set_code : Chunk.t -> 's
     method cleanup : 's
+    method dict : dict
+    method with_dict : dict -> 's
   end
 
 class ['a] t : arch -> Veri_chunki.Disasm.t -> object('s)
@@ -30,5 +32,5 @@ class verbose_context: Veri_stat.t -> Veri_policy.t -> Trace.t -> object('s)
     method update_stat : Veri_stat.t -> 's
     method stat : Veri_stat.t
     method reports : Veri_report.t stream
-    method make_report : Veri_result.error -> Veri_report.t option
+    method make_report : Veri_policy.result list -> Veri_report.t option
   end
