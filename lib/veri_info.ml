@@ -17,13 +17,14 @@ module Insn_freq = struct
       (function
         | None -> Some 1
         | Some cnt -> Some (cnt + 1))
-
-  let pp fmt t =
-    let open Format in
-    let ppi fmt insn num =
-      printf "%a : %d;\n" Insn.pp insn num in
-    Map.iteri ~f:(fun ~key ~data -> ppi fmt key data) t
 end
+
+type insn_freq = Insn_freq.t
+
+let arch_of_trace trace =
+  match Dict.find (Trace.meta trace) Meta.arch with
+  | None -> Or_error.error_string "trace of unknown arch"
+  | Some arch -> Ok arch
 
 module Test_case = struct
   type 'a descr = {
@@ -32,7 +33,7 @@ module Test_case = struct
     tag  : 'a tag;
   }
   type t = | Case : 'a descr -> t
-  type 'a error_test  = dict -> int -> 'a -> 'a
+  type 'a test  = dict -> int -> 'a -> 'a
 
   let create func ~init tag = Case {func; init; tag; }
 
@@ -48,7 +49,7 @@ module Test_case = struct
   let success f ~init tag =
     let checked res num init =
       match Veri_result.(res.kind) with
-      | `Success -> f num init
+      | `Success -> f Veri_result.(res.dict) num init
       |  _ -> init in
     create checked init tag
 
@@ -84,11 +85,6 @@ module Test_case = struct
 
       method result = cases
     end
-
-  let arch_of_trace trace =
-    match Dict.find (Trace.meta trace) Meta.arch with
-    | None -> Or_error.error_string "trace of unknown arch"
-    | Some arch -> Ok arch
 
   let eval trace policy cases =
     let open Or_error in
@@ -163,23 +159,48 @@ end
 
 module Trace = struct
 
-  class context trace = object(self : 's)
+  type order = insn Queue.t
+
+  class ['a] context trace fn init = object(self : 's)
     inherit Veri_chunki.context trace as super
 
-    val insns : Insn_freq.t = Insn_freq.create ()
-    val queue : Insn.t Queue.t = Queue.create ()
+    val acc : 'a = init
+    val cnt = 0
+
+    method update_counter = {< cnt = cnt + 1 >}
+    method update_acc acc = {< acc = acc >}
+    method acc = acc
 
     method! update_insn insn : 's =
-      let s = super#update_insn insn in
+      let self = super#update_insn insn in
       match self#insn with
-      | None -> s
+      | None -> self#update_counter
       | Some insn ->
         let insn = Insn.of_basic insn in
-        Queue.enqueue queue insn;
-        {< insns = Insn_freq.feed insns insn >}
+        let acc = fn acc cnt insn in
+        let self = self#update_counter in
+        self#update_acc acc
 
-    method freq = insns
-    method order = Queue.to_list queue
   end
+
+  let fold trace ~init ~f =
+    match arch_of_trace trace with
+    | Error _ as er -> er
+    | Ok arch ->
+      Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
+          let dis = Dis.store_asm dis |> Dis.store_kinds in
+          let ctxt = new context trace f init in
+          let chunki = new Veri_chunki.t arch dis in
+          let ctxt = Monad.State.exec (chunki#eval_trace trace) ctxt in
+        Ok ctxt#acc)
+
+  let info trace =
+    let order = Queue.create () in
+    let freqs = Insn_freq.create () in
+    let f (order, freq) cnt insn =
+      Queue.enqueue order insn;
+      let freq = Insn_freq.feed freq insn in
+      order,freq in
+    fold trace ~init:(order, freqs) ~f
 
 end
