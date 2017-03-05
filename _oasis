@@ -59,3 +59,12 @@ Test veri_test
   TestTools:      run_tests
   Run$:           flag(tests)
   Command:        $run_tests -runner sequential
+
+Executable "veri-task"
+  Path:           src
+  MainIs:         veri_task.ml
+  CompiledObject: best
+  Install:        true
+  NativeOpt:      -pp 'ppx-jane -dump-ast'
+  ByteOpt:        -pp 'ppx-jane -dump-ast'
+  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner, sqlite3

@@ -13,3 +13,4 @@ PKG bap-traces
 PKG bap-piqi-traces
 PKG pcre
 PKG textutils
+PKG sqlite3

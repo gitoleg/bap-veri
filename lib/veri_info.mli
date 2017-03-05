@@ -58,4 +58,8 @@ module Test_case : sig
   val disasm_error : 'a test -> init:'a -> 'a tag -> t
 
   val eval : trace -> Veri_policy.t -> t array -> value array Or_error.t
+
+  val fold : trace -> Veri_policy.t -> init:'a ->
+    f:('a -> Veri_result.t -> int -> 'a) -> 'a Or_error.t
+
 end

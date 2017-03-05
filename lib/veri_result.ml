@@ -29,14 +29,14 @@ let insn = Value.Tag.register ~name:"instruction"
     ~uuid:"fd176d5c-9402-4d6d-849a-50a09c44b13b"
     (module Insn)
 
+type diff = Veri_policy.result list [@@deriving bin_io, compare, sexp]
+
 let diff = Value.Tag.register ~name:"diff"
     ~uuid:"dc14589f-2fe5-40e9-8a47-b0961d96b827"
     (module struct
-      type t = Veri_policy.result list [@@deriving bin_io, compare, sexp]
-
+      type t = diff [@@deriving bin_io, compare, sexp]
       let ppr fmt (r, m) =
         Format.fprintf fmt "%a:%a\n" Veri_rule.pp r
           Veri_policy.Matched.pp m
-
       let pp fmt rs = List.iter ~f:(ppr fmt) rs
     end)

@@ -37,7 +37,7 @@ module Test_case = struct
 
   let create func ~init tag = Case {func; init; tag; }
 
-  let apply res num = function
+  let call res num = function
     | Case descr ->
       let init = descr.func res num descr.init in
       let descr = {descr with init} in
@@ -65,36 +65,37 @@ module Test_case = struct
   let disasm_error f ~init tag = checked_err `Disasm_error f init tag
   let custom = create
 
-  class context policy trace cases =
+  class ['a] context policy trace f init =
     object (self : 's)
       inherit Veri.context policy trace as super
 
       val num = 0
-      val cases : t array = cases
+      val acc : 'a = init
 
       method increment = {< num = num + 1 >}
-      method apply res =
-        let cases =
-          Array.map ~f:(apply res num) cases in
-        {< cases = cases >}
+      method result = acc
+      method apply res = {< acc = f acc res num >}
 
       method! update_result res =
         let self = super#update_result res in
         let self = self#apply res in
         self#increment
-
-      method result = cases
     end
 
-  let eval trace policy cases =
+  let fold trace policy ~init ~f =
     let open Or_error in
     arch_of_trace trace >>= fun arch ->
     Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
         let dis = Dis.store_asm dis |> Dis.store_kinds in
-        let ctxt = new context policy trace cases in
+        let ctxt = new context policy trace f init in
         let veri = new Veri.t arch dis in
         let ctxt' = Monad.State.exec (veri#eval_trace trace) ctxt in
-        Ok ctxt'#result) >>= fun cases ->
+        Ok ctxt'#result)
+
+  let eval trace policy cases =
+    let open Or_error in
+    let f cases res num = Array.map ~f:(call res num) cases in
+    fold trace policy ~init:cases ~f >>= fun cases ->
     Ok (Array.map ~f:extract cases)
 
 end
