@@ -18,6 +18,7 @@ Library veri
                   Veri_chunki,
                   Veri_result,
                   Veri_info,
+                  Veri_numbers,
                   Veri_policy,
                   Veri_rule,
                   Veri_traci
