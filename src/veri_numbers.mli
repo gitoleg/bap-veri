@@ -20,4 +20,7 @@ module Q : sig
 
 end
 
+val empty : t
+val merge : t -> t -> t
+val add : t -> Veri_result.t -> t
 val run : Trace.t -> Veri_policy.t -> t Or_error.t

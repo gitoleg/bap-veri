@@ -16,6 +16,21 @@ module Collect = struct
 
   let number t =
     Map.fold t ~init:0 ~f:(fun ~key ~data acc -> acc + data)
+
+  let merge first second  =
+    Map.fold ~init:first second
+      ~f:(fun ~key ~data res ->
+          Map.change res key ~f:(function
+              | None -> Some data
+              | Some data' -> Some (data + data')))
+
+  let add map = function
+    | None -> map
+    | Some insn ->
+      Map.change map insn ~f:(function
+          | None -> Some 1
+          | Some n -> Some (n + 1))
+
 end
 
 let incr _ _ cnt = cnt + 1
@@ -71,7 +86,6 @@ type t = {
   unsound  : col;
   unknown  : col;
   undisas  : int;
-  total    : int;
 }
 
 module Q = struct
@@ -80,19 +94,20 @@ module Q = struct
   type insn_query = [ Veri_result.success | Veri_result.sema_error]
   type int_query = [`Total_number | query]
 
-  let number = Map.fold ~f:(fun ~key ~data num -> num + data) ~init:0
+  let number = Collect.number
 
-  let total t = t.total
+  let total t =
+    number t.success + number t.unsound + number t.unknown + t.undisas
 
   let abs t = function
-    | `Total_number -> t.total
+    | `Total_number -> total t
     | `Disasm_error -> t.undisas
     | `Unsound_sema -> number t.unsound
     | `Unknown_sema -> number t.unknown
     | `Success      -> number t.success
 
   let relat t kind =
-    float (abs t kind) /. float t.total
+    float (abs t kind) /. float (total t)
 
   let insn t insn kind =
     let f m = match Map.find m insn with
@@ -115,6 +130,28 @@ module Q = struct
 
 end
 
+let empty = {
+  success = Collect.empty;
+  unsound = Collect.empty;
+  unknown = Collect.empty;
+  undisas = 0;
+}
+
+let merge x y = {
+  undisas = x.undisas + y.undisas;
+  success = Collect.merge x.success y.success;
+  unsound = Collect.merge x.unsound y.unsound;
+  unknown = Collect.merge x.unknown y.unknown;
+}
+
+let add s res =
+  let insn = Dict.find res.Veri_result.dict Veri_result.insn in
+  match res.Veri_result.kind with
+  | `Success -> {s with success = Collect.add s.success insn}
+  | `Disasm_error -> {s with undisas = s.undisas + 1}
+  | `Unknown_sema -> {s with unknown = Collect.add s.unknown insn}
+  | `Unsound_sema -> {s with unsound = Collect.add s.unsound insn}
+
 let run trace policy =
   match T.eval trace policy test_cases with
   | Error _ as r -> r
@@ -124,5 +161,4 @@ let run trace policy =
       {success = get sucs 0;
        unsound = get unsound 1;
        unknown = get unknown 2;
-       undisas = get undisas 3;
-       total = get total 4;}
+       undisas = get undisas 3;}

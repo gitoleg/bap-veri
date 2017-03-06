@@ -20,7 +20,11 @@ type result = rule * matched
 [@@deriving bin_io, compare, sexp]
 
 val empty : t
+
+val default : t
+
 val add : t -> rule -> t
+
 
 (** [match events rule insn left right] *)
 val match_events: rule -> string -> events -> events -> matched option

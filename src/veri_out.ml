@@ -2,8 +2,7 @@ open Core_kernel.Std
 open Textutils.Std
 open Text_block
 
-module Abs = Veri_verbose.Stat.Abs
-module Rel = Veri_verbose.Stat.Rel
+module Q = Veri_numbers.Q
 
 let make_iota max =
   let rec make acc n =
@@ -19,19 +18,18 @@ let intgr_col title vals = make_col title (Printf.sprintf "%d") vals
 let float_col title vals = make_col title (Printf.sprintf "%.2f") vals
 
 let output stats path =
-  let of_stats f = List.map ~f stats in
-  let of_stats' f = List.map ~f:(fun x -> f (snd x)) stats in
+  let of_stats f = List.map ~f:(fun x -> f (snd x)) stats in
   let out = Out_channel.create path in
   let cnter = intgr_col "#" (make_iota (List.length stats)) in
-  let names = texts_col "file" (of_stats fst) in
-  let total = intgr_col "total" (of_stats' Abs.total) in
-  let as_percents = true in
+  let names = texts_col "file" (List.map ~f:fst stats) in
+  let total = intgr_col "total" (of_stats Q.total) in
+  let relat kind s = Q.relat s kind in
   let prcnt = List.map
-      ~f:(fun (name, f) -> float_col name (of_stats' f))
-             [ "successed, %",   Rel.successed ~as_percents;
-               "misexecuted, %", Rel.misexecuted ~as_percents;
-               "undisasmed, %",  Rel.undisasmed ~as_percents;
-               "mislifted, %",   Rel.mislifted ~as_percents; ] in
+      ~f:(fun (name, f) -> float_col name (of_stats f))
+             [ "successful, %",   relat `Success;
+               "unsound, %", relat `Unsound_sema;
+               "undisas, %",  relat `Disasm_error;
+               "unknown, %",   relat `Unknown_sema; ] in
   let tab = hcat ~sep:(text "  |  ") ([cnter; names; total] @ prcnt) in
   Out_channel.output_string out (render tab);
   Out_channel.close out

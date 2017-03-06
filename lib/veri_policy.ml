@@ -42,6 +42,10 @@ type result = rule * matched [@@deriving bin_io, compare, sexp]
 let empty = []
 let add t rule : t = rule :: t
 
+let default =
+  let p = add empty (Rule.create_exn ~insn:".*" ~left:".*" Rule.deny) in
+    add p (Rule.create_exn ~insn:".*" ~right:".*" Rule.deny)
+
 let string_of_events ev ev' =
   String.concat ~sep:" " [Value.pps () ev; Value.pps () ev']
 

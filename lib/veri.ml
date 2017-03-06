@@ -57,6 +57,10 @@ let add_unsound dict name results =
   let dict = update_dict dict Veri_result.error er in
   update_dict dict Veri_result.diff results
 
+let add_events dict real ours =
+  let dict = update_dict dict Veri_result.real (Set.to_list real) in
+  update_dict dict Veri_result.ours (Set.to_list ours)
+
 class context policy trace = object(self:'s)
   inherit Veri_chunki.context trace as super
 
@@ -93,8 +97,10 @@ class context policy trace = object(self:'s)
       | Some name ->
         let other = Option.value_exn self#other in
         let events, events' = other#events, self#events in
+        let dict = add_events dict events events' in
         match Veri_policy.denied policy name events events' with
         | [] ->
+          let self = self#with_dict dict in
           let self = self#update_result @@ make_result `Success dict in
           self#cleanup
         | results ->
