@@ -1,14 +1,20 @@
 open Core_kernel.Std
 open Bap.Std
 
-type error_kind = [
-  | `Disasm_error (** error with disassembling                     *)
+type sema_error = [
   | `Unsound_sema (** instruction execution mismatches with trace  *)
   | `Unknown_sema (** instruction semantic is unknown for lifter   *)
-]  [@@deriving bin_io, compare, sexp]
+] [@@deriving bin_io, compare, sexp]
+
+type error_kind = [
+  | `Disasm_error (** error with disassembling                     *)
+  | sema_error
+] [@@deriving bin_io, compare, sexp]
+
+type success = [ `Success ] [@@deriving bin_io, compare, sexp]
 
 type kind = [
-  | `Success
+  | success
   | error_kind
 ] [@@deriving bin_io, compare, sexp]
 

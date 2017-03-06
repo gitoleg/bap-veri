@@ -46,10 +46,10 @@ let unknown =
     ~uuid:"464227e3-e101-4154-b4e1-361bd45a215b"
     (module Collect)
 
-let undisasm =
+let undisas =
   Value.Tag.register ~name:"undisasmed insn case"
     ~uuid:"95b23a1b-b021-4e77-b293-66e15474ce39"
-    (module Collect)
+    (module Int)
 
 module T = Veri_info.Test_case
 
@@ -59,46 +59,59 @@ let test_cases = [|
   T.success add ~init sucs;
   T.unsound_sema add ~init unsound;
   T.unknown_sema add ~init unknown;
-  T.disasm_error add ~init undisasm;
+  T.disasm_error incr ~init:0 undisas;
   T.custom incr ~init:0 total;
 |]
 
 
-type c = Collect.t
+type col = Collect.t
 
 type t = {
-  success  : c;
-  unsound  : c;
-  unknown  : c;
-  undisasm : c;
+  success  : col;
+  unsound  : col;
+  unknown  : col;
+  undisas  : int;
   total    : int;
 }
 
 module Q = struct
 
   type query = Veri_result.kind
-
-  type int_query = [
-    | `Total_number
-    | query
-  ]
+  type insn_query = [ Veri_result.success | Veri_result.sema_error]
+  type int_query = [`Total_number | query]
 
   let number = Map.fold ~f:(fun ~key ~data num -> num + data) ~init:0
 
-  let total t = function
+  let total t = t.total
+
+  let abs t = function
     | `Total_number -> t.total
-    | `Disasm_error -> number t.undisasm
+    | `Disasm_error -> t.undisas
     | `Unsound_sema -> number t.unsound
     | `Unknown_sema -> number t.unknown
     | `Success      -> number t.success
 
-  let stub = 0.5
+  let relat t kind =
+    float (abs t kind) /. float t.total
 
-  let relat t = function
-    | `Disasm_error -> stub
-    | `Unsound_sema -> stub
-    | `Unknown_sema -> stub
-    | `Success -> stub
+  let insn t insn kind =
+    let f m = match Map.find m insn with
+      | None -> 0
+      | Some x -> x in
+    match kind with
+    | `Unsound_sema -> f t.unsound
+    | `Unknown_sema -> f t.unknown
+    | `Success -> f t.success
+
+  let insns t = function
+    | `Unsound_sema -> Map.keys t.unsound
+    | `Unknown_sema -> Map.keys t.unknown
+    | `Success -> Map.keys t.success
+
+  let insnsi t = function
+    | `Unsound_sema -> Map.to_alist t.unsound
+    | `Unknown_sema -> Map.to_alist t.unknown
+    | `Success -> Map.to_alist t.success
 
 end
 
@@ -111,5 +124,5 @@ let run trace policy =
       {success = get sucs 0;
        unsound = get unsound 1;
        unknown = get unknown 2;
-       undisasm = get undisasm 3;
+       undisas = get undisas 3;
        total = get total 4;}

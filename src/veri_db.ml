@@ -6,6 +6,9 @@ open Bap_traces.Std
 
 include Self()
 
+
+module Q = Veri_numbers.Q
+
 (** YYYY-MM-DD HH:MM:SS in UTC *)
 let get_time () =
   let open Unix in
@@ -81,7 +84,7 @@ let create_total_tab db =
 
 let add_total db task_id result =
   let str_of_num what =
-    string_of_int @@ Veri_numbers.Q.total result what in
+    string_of_int @@ Q.abs result what in
   let q = sprintf "INSERT INTO total
       VALUES ('%s', '%s', '%s', '%s', '%s', '%s');"
       (Int64.to_string task_id)
@@ -91,6 +94,41 @@ let add_total db task_id result =
       (str_of_num `Unknown_sema)
       (str_of_num `Disasm_error) in
   checked db "create env tab" (exec db q)
+
+let create_insn_tab db =
+  let q = "CREATE TABLE insn (
+    Id TEXT PRIMARY_KEY NON NULL,
+    Name TEXT,
+    Successful INTEGER,
+    Unsound_sema INTEGER,
+    Unknown_sema INTEGER);" in
+  checked db "create insn tab" (exec db q)
+
+let add_insns db result =
+  let add insns s =
+    List.fold ~init:s ~f:Set.add insns in
+  let get i q = string_of_int (Q.insn result i q) in
+  let s =
+    add (Q.insns result `Success) Insn.Set.empty |>
+    add (Q.insns result `Unsound_sema) |>
+    add (Q.insns result `Unknown_sema) in
+  let len = Set.length s in
+  let q =
+    Set.fold ~init:(Ok (0, "INSERT INTO insn VALUES "))
+      ~f:(fun r i -> match r with
+        | Ok (cnt, s) ->
+          let q = sprintf "('%s', '%s', '%s', '%s', '%s')"
+            (Insn.asm i)
+            (Insn.name i)
+            (get i `Success)
+            (get i `Unsound_sema)
+            (get i `Unknown_sema) in
+        let q = if cnt = len - 1 then sprintf "%s %s;" s q
+          else sprintf "%s %s," s q in
+        Ok (cnt + 1, q)
+        | _ as r -> r) s in
+  q >>= fun (_,q) ->
+  checked db "add insn" (exec db q)
 
 let open_db name =
   let try_open name =
@@ -104,12 +142,13 @@ let open_db name =
     create_task_tab db >>= fun () ->
     create_env_tab db >>= fun () ->
     create_total_tab db >>= fun () ->
+    create_insn_tab db >>= fun () ->
     Ok db
 
 let close_db db =
   if db_close db then ()
   else
-    eprintf "warning! database didn't close properly\n"
+    eprintf "warning! database wasn't closed properly\n"
 
 let arch trace = match Dict.find (Trace.meta trace) Meta.arch with
   | None -> Or_error.error_string "trace of unknown arch"
@@ -128,7 +167,8 @@ let add_data db trace env result =
   target_name trace >>= fun target_name ->
   add_task db target_name >>= fun task_id ->
   add_env db task_id env >>= fun () ->
-  add_total db task_id result
+  add_total db task_id result >>= fun () ->
+  add_insns db result
 
 let make_env ?compiler_ops ?object_ops ?extra trace rules =
   let with_default ~def x = Option.value_map ~default:def ~f:ident x in
