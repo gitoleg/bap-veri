@@ -42,8 +42,8 @@ class context trace = object(self:'s)
     | Ok insn  -> {< error = None; insn = Some insn >}
 
   method update_bil b = match b with
-    | Error er ->  {< error = Some (`Unknown_sema, er); bil = [] >}
-    | Ok bil   ->  {< error = None; bil = bil >}
+    | Error er -> {< error = Some (`Unknown_sema, er); bil = [] >}
+    | Ok bil   -> {< error = None; bil = bil >}
 
   method error = error
   method insn  = insn

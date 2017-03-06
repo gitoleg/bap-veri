@@ -47,7 +47,7 @@ let print_report fmt result =
     get R.diff >>= fun diff ->
     let bil = Insn.bil insn in
     let insn = Insn.name insn in
-    Format.fprintf fmt "@[<v>%s %a@,real: %a@,ours: %a@,%a@]@."
+    Format.fprintf fmt "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."
       insn pp_code code pp_evs real pp_evs ours Bil.pp bil;
     List.iter ~f:(pp_data fmt) diff;
     Format.print_newline ();

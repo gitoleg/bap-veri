@@ -36,10 +36,6 @@ let find_mem_load  = find Event.memory_load
 let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
-let insn_name = function
-  | None -> None
-  | Some insn -> Some (Dis.Insn.name insn)
-
 module Events = Value.Set
 
 type result = Veri_result.t
@@ -61,6 +57,12 @@ let add_events dict real ours =
   let dict = update_dict dict Veri_result.real (Set.to_list real) in
   update_dict dict Veri_result.ours (Set.to_list ours)
 
+let add_insn dict bil = function
+  | None -> dict
+  | Some insn ->
+    update_dict dict Veri_result.insn
+      (Insn.of_basic ~bil insn)
+
 class context policy trace = object(self:'s)
   inherit Veri_chunki.context trace as super
 
@@ -77,24 +79,18 @@ class context policy trace = object(self:'s)
   method update_result (r : result) = self
   method with_dict dict : 's = {< dict = dict >}
 
-  method! update_insn insn =
-    let self = super#update_insn insn in
-    match self#insn with
-    | None -> self
-    | Some x ->
-      self#with_dict @@
-      update_dict dict Veri_result.insn (Insn.of_basic x)
-
   method merge =
+    let dict = add_insn dict self#bil self#insn in
     match self#error with
     | Some (kind, er) ->
       let self = self#with_dict @@
         update_dict dict Veri_result.error er in
       let self = self#update_result @@ make_result kind self#dict in
       self#cleanup
-    | None -> match insn_name self#insn with
+    | None -> match self#insn with
       | None -> self#cleanup
-      | Some name ->
+      | Some insn ->
+        let name = Dis.Insn.name insn in
         let other = Option.value_exn self#other in
         let events, events' = other#events, self#events in
         let dict = add_events dict events events' in
