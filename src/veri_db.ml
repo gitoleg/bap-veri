@@ -97,14 +97,16 @@ let add_total db task_id result =
 
 let create_insn_tab db =
   let q = "CREATE TABLE insn (
-    Id TEXT PRIMARY_KEY NON NULL,
-    Name TEXT,
+    Id_task INTEGER PRIMARY_KEY NOT NULL,
+    Id_insn INTEGER PRIMARY_KEY NOT NULL,
+    Name TEXT NOT NULL,
+    Asm TEXT NOT NULL,
     Successful INTEGER,
     Unsound_sema INTEGER,
     Unknown_sema INTEGER);" in
   checked db "create insn tab" (exec db q)
 
-let add_insns db result =
+let add_insns db task_id result =
   let add insns s =
     List.fold ~init:s ~f:Set.add insns in
   let get i q = string_of_int (Q.insn result i q) in
@@ -115,18 +117,19 @@ let add_insns db result =
   let len = Set.length s in
   let q =
     Set.fold ~init:(Ok (0, "INSERT INTO insn VALUES "))
-      ~f:(fun r i -> match r with
-        | Ok (cnt, s) ->
-          let q = sprintf "('%s', '%s', '%s', '%s', '%s')"
-            (Insn.asm i)
-            (Insn.name i)
-            (get i `Success)
-            (get i `Unsound_sema)
-            (get i `Unknown_sema) in
-        let q = if cnt = len - 1 then sprintf "%s %s;" s q
-          else sprintf "%s %s," s q in
-        Ok (cnt + 1, q)
-        | _ as r -> r) s in
+      ~f:(fun r i ->
+          r >>= fun (cnt, s) ->
+          let q = sprintf "('%s', '%s', '%s', '%s', '%s', '%s', '%s')"
+              (Int64.to_string task_id)
+              (string_of_int cnt)
+              (Insn.name i)
+              (Insn.asm i)
+              (get i `Success)
+              (get i `Unsound_sema)
+              (get i `Unknown_sema) in
+          let q = if cnt = len - 1 then sprintf "%s %s;" s q
+            else sprintf "%s %s," s q in
+          Ok (cnt + 1, q)) s in
   q >>= fun (_,q) ->
   checked db "add insn" (exec db q)
 
@@ -168,7 +171,7 @@ let add_data db trace env result =
   add_task db target_name >>= fun task_id ->
   add_env db task_id env >>= fun () ->
   add_total db task_id result >>= fun () ->
-  add_insns db result
+  add_insns db task_id result
 
 let make_env ?compiler_ops ?object_ops ?extra trace rules =
   let with_default ~def x = Option.value_map ~default:def ~f:ident x in

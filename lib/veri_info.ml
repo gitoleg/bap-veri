@@ -82,7 +82,7 @@ module Test_case = struct
         self#increment
     end
 
-  let fold trace policy ~init ~f =
+  let foldi trace policy ~init ~f =
     let open Or_error in
     arch_of_trace trace >>= fun arch ->
     Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
@@ -95,8 +95,20 @@ module Test_case = struct
   let eval trace policy cases =
     let open Or_error in
     let f cases res num = Array.map ~f:(call res num) cases in
-    fold trace policy ~init:cases ~f >>= fun cases ->
+    foldi trace policy ~init:cases ~f >>= fun cases ->
     Ok (Array.map ~f:extract cases)
+
+  let iteri trace policy ~f =
+    let f () = f in
+    foldi trace policy ~init:() ~f
+
+  let fold trace policy ~init ~f =
+    let f c r i = f c r in
+    foldi trace policy ~init ~f
+
+  let iter trace policy ~f =
+    let f r i = f r in
+    iteri trace policy ~f
 
 end
 

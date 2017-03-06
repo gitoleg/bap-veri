@@ -59,7 +59,12 @@ module Test_case : sig
 
   val eval : trace -> Veri_policy.t -> t array -> value array Or_error.t
 
-  val fold : trace -> Veri_policy.t -> init:'a ->
+  val fold : trace -> Veri_policy.t -> init:'a -> f:('a -> Veri_result.t -> 'a) -> 'a Or_error.t
+  val iter : trace -> Veri_policy.t -> f:(Veri_result.t -> unit) -> unit Or_error.t
+
+  val foldi : trace -> Veri_policy.t -> init:'a ->
     f:('a -> Veri_result.t -> int -> 'a) -> 'a Or_error.t
+
+  val iteri : trace -> Veri_policy.t -> f:(Veri_result.t -> int -> unit) -> unit Or_error.t
 
 end
