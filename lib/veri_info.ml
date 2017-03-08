@@ -112,64 +112,6 @@ module Test_case = struct
 
 end
 
-module Binary = struct
-  open SM.Monad_infix
-
-  type 'a u = 'a Bil.Result.u
-  type insns = insn seq
-
-  module Base = struct
-
-    class context insns = object (self : 's)
-      val insns : insn seq = insns
-
-      method next_insn = match Seq.next insns with
-        | None -> None
-        | Some (insn, insns) -> Some ({< insns = insns; >}, insn)
-
-      method with_insns insns : 's = {< insns = insns >}
-    end
-
-    class ['a] t = object (self)
-      constraint 'a = #context
-
-      method eval_insn (insn : Insn.t) : 'a u = SM.return ()
-
-      method eval_insns insns =
-        SM.update (fun ctxt -> ctxt#with_insns insns) >>= fun () -> self#run
-
-      method private run : 'a u =
-        SM.get () >>= fun ctxt ->
-        match ctxt#next_insn with
-        | None -> SM.return ()
-        | Some (ctxt, insn) ->
-          SM.put ctxt >>= fun () -> self#eval_insn insn >>= fun () -> self#run
-    end
-  end
-
-  class context insn = object(self : 's)
-    inherit Base.context insn as super
-
-    val insn_freq : Insn_freq.t = Insn_freq.create ()
-
-    method add_insn insn =
-      {< insn_freq = Insn_freq.feed insn_freq insn >}
-
-    method freq = insn_freq
-  end
-
-  class ['a] t = object (self)
-    constraint 'a = #context
-    inherit ['a] Base.t as super
-
-    method! eval_insn insn =
-      super#eval_insn insn >>= fun () ->
-      SM.update (fun c -> c#add_insn insn)
-
-  end
-end
-
-
 module Trace = struct
 
   type order = insn Queue.t

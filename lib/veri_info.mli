@@ -4,35 +4,6 @@ open Bap_traces.Std
 
 type insn_freq = int Insn.Map.t
 
-module Binary : sig
-  type 'a u = 'a Bil.Result.u
-  type insns = insn seq
-
-  module Base : sig
-    class context : insns -> object ('s)
-        method next_insn  : ('s * insn) option
-        method with_insns : insns -> 's
-      end
-
-    class ['a] t : object
-      constraint 'a = #context
-      method eval_insn  : insn -> 'a u
-      method eval_insns : insns -> 'a u
-    end
-  end
-
-  class context : insns -> object ('s)
-      inherit Base.context
-      method add_insn : insn -> 's
-      method freq : insn_freq
-    end
-
-  class ['a] t : object
-    constraint 'a = #context
-    inherit ['a] Base.t
-  end
-end
-
 module Trace : sig
   type order = insn Queue.t
 
