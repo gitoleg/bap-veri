@@ -62,17 +62,27 @@ let read_dir path =
   Unix.closedir dir;
   files
 
-let launch db_name target extra rules_path =
+let policy_of_rules rules =
+  List.fold ~f:Veri_policy.add ~init:Veri_policy.empty rules
+
+let eval_file db_name extra rules target =
   let open Or_error in
-  let extra = List.fold ~f:(fun s (k,v) -> sprintf "%s %s:%s;" s k v) ~init:"" extra in
-  let rls = rules_of_path rules_path in
-  let p = List.fold ~f:Veri_policy.add ~init:Veri_policy.empty rls in
+  let p = policy_of_rules rules in
   let r = trace_of_path target >>= fun trace ->
     Veri_numbers.run trace p >>= fun res ->
-    Veri_db.update_db ~extra trace rls res db_name  in
+    Veri_db.update_db ~extra trace rules res db_name  in
   match r with
   | Ok () -> ()
   | Error er -> eprintf "%s" @@ Error.to_string_hum er
+
+let launch db_name path extra rules_path =
+  let files =
+    if Sys.is_directory path then (read_dir path)
+    else [path] in
+  let extra = List.fold ~f:(fun s (k,v) -> sprintf "%s %s:%s;" s k v) ~init:"" extra in
+  let rls = rules_of_path rules_path in
+  List.iter ~f:(eval_file db_name extra rls) files
+
 
 module Command = struct
 
