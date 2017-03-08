@@ -6,7 +6,6 @@ open Bap_traces.Std
 
 include Self()
 
-
 module Q = Veri_numbers.Q
 
 (** YYYY-MM-DD HH:MM:SS in UTC *)
@@ -97,41 +96,60 @@ let add_total db task_id result =
 
 let create_insn_tab db =
   let q = "CREATE TABLE insn (
-    Id_task INTEGER PRIMARY_KEY NOT NULL,
-    Id_insn INTEGER PRIMARY_KEY NOT NULL,
+    Id_task INTEGER NOT NULL,
+    Id_insn INTEGER NOT NULL,
     Name TEXT NOT NULL,
     Asm TEXT NOT NULL,
     Successful INTEGER,
     Unsound_sema INTEGER,
-    Unknown_sema INTEGER);" in
+    Unknown_sema INTEGER,
+    PRIMARY KEY (Id_task, Id_insn));" in
   checked db "create insn tab" (exec db q)
 
 let add_insns db task_id result =
-  let add insns s =
-    List.fold ~init:s ~f:Set.add insns in
-  let get i q = string_of_int (Q.insn result i q) in
-  let s =
-    add (Q.insns result `Success) Insn.Set.empty |>
-    add (Q.insns result `Unsound_sema) |>
-    add (Q.insns result `Unknown_sema) in
-  let len = Set.length s in
-  let q =
-    Set.fold ~init:(Ok (0, "INSERT INTO insn VALUES "))
-      ~f:(fun r i ->
-          r >>= fun (cnt, s) ->
+  let open Tuple in
+  let incr (x,y,z) num = function
+    | `Success -> x + num, y, z
+    | `Unsound_sema -> x, y + num, z
+    | `Unknown_sema -> x, y, z + num in
+  let add kind s =
+    List.fold ~init:s
+      ~f:(fun s (i, num) ->
+          Map.change s i ~f:(function
+              | None -> Some (incr (0,0,0) num kind)
+              | Some r -> Some (incr r num kind)))
+      (Q.insnsi result kind) in
+  let all =
+    add `Success Insn.Map.empty |>
+    add `Unsound_sema |>
+    add `Unknown_sema in
+  let qs,_ =
+    Map.fold ~init:([], 0)
+      ~f:(fun ~key ~data (qs, cnt) ->
+          let suc, uns, unk = data in
           let q = sprintf "('%s', '%s', '%s', '%s', '%s', '%s', '%s')"
               (Int64.to_string task_id)
               (string_of_int cnt)
-              (Insn.name i)
-              (Insn.asm i)
-              (get i `Success)
-              (get i `Unsound_sema)
-              (get i `Unknown_sema) in
-          let q = if cnt = len - 1 then sprintf "%s %s;" s q
-            else sprintf "%s %s," s q in
-          Ok (cnt + 1, q)) s in
-  q >>= fun (_,q) ->
-  checked db "add insn" (exec db q)
+              (Insn.name key)
+              (Insn.asm key)
+              (string_of_int suc)
+              (string_of_int uns)
+              (string_of_int unk) in
+          let q = if cnt = 0 then q ^ ";" else q in
+          q :: qs, cnt + 1) all in
+  match qs with
+  | fst :: others ->
+    let intro = "INSERT INTO insn VALUES " ^ fst  in
+    let query = String.concat ~sep:", " (intro :: others) in
+    checked db "add insn" (exec db  query)
+  | [] -> Ok ()
+
+let create_undis_tab db =
+   let q = "CREATE TABLE insn (
+    Id_task INTEGER NOT NULL,
+    Id_insn INTEGER NOT NULL,
+    PRIMARY KEY (Id_task, Id_));" in
+  checked db "create insn tab" (exec db q)
 
 let open_db name =
   let try_open name =

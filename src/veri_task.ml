@@ -38,13 +38,29 @@ let arch_of_trace trace =
   | None -> Or_error.error_string "trace of unknown arch"
   | Some arch -> Ok arch
 
-let compiler_ops trace = failwith "unimpl"
-
 let obj_ops trace =
   match find_meta trace Meta.binary with
   | None -> None
   | Some bin ->
     Some (Array.to_list bin.Binary.args)
+
+let read_dir path =
+  let dir = Unix.opendir path in
+  let fullpath file = String.concat ~sep:"/" [path; file] in
+  let is_trace file = Filename.check_suffix file ".frames" in
+  let next () =
+    try
+      Some (Unix.readdir dir)
+    with End_of_file -> None in
+  let rec folddir acc =
+    match next () with
+    | Some file ->
+      if is_trace file then folddir (fullpath file :: acc)
+      else folddir acc
+    | None -> acc in
+  let files = folddir [] in
+  Unix.closedir dir;
+  files
 
 let launch db_name target extra rules_path =
   let open Or_error in
@@ -75,7 +91,7 @@ module Command = struct
       | _ -> `Error "expected <key>:<value>"
 
     let printer fmt (k,v) = Format.fprintf fmt "%s:%s" k v
-    (* let t = Config.converter parser printer ("","") *)
+
     let t = parser,printer
   end
 

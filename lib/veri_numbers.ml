@@ -92,7 +92,6 @@ module Q = struct
 
   type query = Veri_result.kind
   type insn_query = [ Veri_result.success | Veri_result.sema_error]
-  type int_query = [`Total_number | query]
 
   let number = Collect.number
 
