@@ -219,7 +219,7 @@ module Command = struct
 
   let filename =
     let doc =
-      "Input file with extension .frames of directory with .frames files" in
+      "Input file with extension .frames or directory with .frames files" in
     Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"FILE | DIR")
 
   let output =

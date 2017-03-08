@@ -112,8 +112,10 @@ module Command = struct
 
   let target =
     let doc =
-      "A task's subject. Path to file with .frames extension" in
-    Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"FILE")
+      "A task's subject : input file with extension .frames or
+       directory with .frames files" in
+    Arg.(required & pos 1 (some file) None
+         & info [] ~doc ~docv:"DIR | FILE")
 
   let extra =
     let doc = "Any extra information that one can pr ovides with
