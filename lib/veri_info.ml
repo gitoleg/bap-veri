@@ -112,6 +112,8 @@ module Test_case = struct
 
 end
 
+type test_case = Test_case.t
+
 module Trace = struct
 
   type order = insn Queue.t

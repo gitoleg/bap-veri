@@ -6,7 +6,7 @@ open Bap_traces.Std
 
 include Self()
 
-module Q = Veri_numbers.Q
+module Q = Veri_numbers
 
 (** YYYY-MM-DD HH:MM:SS in UTC *)
 let get_time () =
@@ -48,7 +48,7 @@ let add_task db target_name =
 
 let create_env_tab db =
   let q = "CREATE TABLE env (
-       Id INTEGER PRIMARY KEY NOT NULL,
+       Id_task INTEGER PRIMARY KEY NOT NULL,
        Date TEXT NOT NULL,
        Bap TEXT NOT NULL,
        Arch TEXT NOT NULL,
@@ -71,70 +71,78 @@ let add_env db task_id env =
       env.extra in
   checked db "add env" (exec db q)
 
-let create_total_tab db =
-  let q = "CREATE TABLE total (
-       Id INTEGER PRIMARY KEY NOT NULL,
-       Total INTEGER,
-       Successful INTEGER,
-       Unsound_sema INTEGER,
-       Unknown_sema INTEGER,
-       Undisasmed INTEGER);" in
-  checked db "create total tab" (exec db q)
-
-let add_total db task_id result =
-  let str_of_num what =
-    string_of_int @@ Q.abs result what in
-  let q = sprintf "INSERT INTO total
-      VALUES ('%s', '%s', '%s', '%s', '%s', '%s');"
-      (Int64.to_string task_id)
-      (str_of_num `Total_number)
-      (str_of_num `Success)
-      (str_of_num `Unsound_sema)
-      (str_of_num `Unknown_sema)
-      (str_of_num `Disasm_error) in
-  checked db "create env tab" (exec db q)
-
 let create_insn_tab db =
   let q = "CREATE TABLE insn (
     Id_task INTEGER NOT NULL,
     Id_insn INTEGER NOT NULL,
-    Name TEXT NOT NULL,
-    Asm TEXT NOT NULL,
+    Bytes TEXT NOT NULL,
+    Name TEXT,
+    Asm TEXT,
+    Bil TEXT,
+    Indexes TEXT,
     Successful INTEGER,
+    Undisasmed INTEGER,
     Unsound_sema INTEGER,
     Unknown_sema INTEGER,
     PRIMARY KEY (Id_task, Id_insn));" in
   checked db "create insn tab" (exec db q)
 
+class tmp_var_mapper = object
+  inherit Stmt.mapper
+
+  val mutable var_id = 0
+
+  (** TODO *)
+  method! map_var var =
+    if Var.is_virtual var then Bil.Var var
+    else Bil.Var var
+end
+
+let get_bil insn =
+  let bil = Insn.bil insn in
+  let map = new tmp_var_mapper in
+  let bil = map#run bil in
+  Sexp.to_string (Bil.sexp_of_t bil)
+
+let str_of_bytes b =
+  String.fold b ~init:""
+    ~f:(fun s c ->
+        sprintf "%s %X" s (Char.to_int c))
+
+let str_of_indexes inds =
+  let ss = List.map ~f:(sprintf "%d ") inds in
+  String.concat ss
+
 let add_insns db task_id result =
-  let open Tuple in
-  let incr (x,y,z) num = function
-    | `Success -> x + num, y, z
-    | `Unsound_sema -> x, y + num, z
-    | `Unknown_sema -> x, y, z + num in
+  let str_of_insn ~f = function
+    | None -> ""
+    | Some i -> f i in
   let add kind s =
-    List.fold ~init:s
-      ~f:(fun s (i, num) ->
-          Map.change s i ~f:(function
-              | None -> Some (incr (0,0,0) num kind)
-              | Some r -> Some (incr r num kind)))
-      (Q.insnsi result kind) in
+    List.fold ~f:Set.add ~init:s (Q.bytes result kind) in
   let all =
-    add `Success Insn.Map.empty |>
+    add `Success String.Set.empty |>
+    add `Disasm_error |>
     add `Unsound_sema |>
     add `Unknown_sema in
   let qs,_ =
-    Map.fold ~init:([], 0)
-      ~f:(fun ~key ~data (qs, cnt) ->
-          let suc, uns, unk = data in
-          let q = sprintf "('%s', '%s', '%s', '%s', '%s', '%s', '%s')"
-              (Int64.to_string task_id)
-              (string_of_int cnt)
-              (Insn.name key)
-              (Insn.asm key)
-              (string_of_int suc)
-              (string_of_int uns)
-              (string_of_int unk) in
+    Set.fold ~init:([], 0)
+      ~f:(fun (qs, cnt) b ->
+          let suc = Q.bytes_number result `Success b in
+          let und = Q.bytes_number result `Disasm_error b in
+          let uns = Q.bytes_number result `Unsound_sema b in
+          let unk = Q.bytes_number result `Unknown_sema b in
+          let ins = Q.find_insn result b in
+          let ind = Q.find_indexes result b in
+          let q = sprintf
+              "('%Ld', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d')"
+              task_id
+              cnt
+              (str_of_bytes b)
+              (str_of_insn ~f:Insn.name ins)
+              (str_of_insn ~f:Insn.asm ins)
+              (str_of_insn ~f:get_bil ins)
+              (str_of_indexes ind)
+              suc und uns unk in
           let q = if cnt = 0 then q ^ ";" else q in
           q :: qs, cnt + 1) all in
   match qs with
@@ -143,13 +151,6 @@ let add_insns db task_id result =
     let query = String.concat ~sep:", " (intro :: others) in
     checked db "add insn" (exec db  query)
   | [] -> Ok ()
-
-let create_undis_tab db =
-   let q = "CREATE TABLE insn (
-    Id_task INTEGER NOT NULL,
-    Id_insn INTEGER NOT NULL,
-    PRIMARY KEY (Id_task, Id_));" in
-  checked db "create insn tab" (exec db q)
 
 let open_db name =
   let try_open name =
@@ -162,7 +163,6 @@ let open_db name =
     let db = db_open name in
     create_task_tab db >>= fun () ->
     create_env_tab db >>= fun () ->
-    create_total_tab db >>= fun () ->
     create_insn_tab db >>= fun () ->
     Ok db
 
@@ -188,7 +188,6 @@ let add_data db trace env result =
   target_name trace >>= fun target_name ->
   add_task db target_name >>= fun task_id ->
   add_env db task_id env >>= fun () ->
-  add_total db task_id result >>= fun () ->
   add_insns db task_id result
 
 let make_env ?compiler_ops ?object_ops ?extra trace rules =

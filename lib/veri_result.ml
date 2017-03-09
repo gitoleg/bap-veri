@@ -1,5 +1,6 @@
 open Core_kernel.Std
 open Bap.Std
+open Regular.Std
 open Bap_traces.Std
 
 type sema_error = [
@@ -14,10 +15,26 @@ type error_kind = [
 
 type success = [ `Success ] [@@deriving bin_io, compare, sexp]
 
-type kind = [
-  | success
-  | error_kind
-] [@@deriving bin_io, compare, sexp]
+module Kind = struct
+  type t = [
+    | success
+    | error_kind
+  ]  [@@deriving bin_io, compare, sexp]
+
+  include Regular.Make(struct
+    type nonrec t = t [@@deriving bin_io, compare, sexp]
+    let compare = compare
+    let hash = Hashtbl.hash
+    let module_name = Some "Veri_result.Kind"
+    let version = "0.1"
+
+    let pp fmt t =
+      Format.fprintf fmt "%s" (Sexp.to_string (sexp_of_t t))
+
+  end)
+end
+
+type kind = Kind.t [@@deriving bin_io, compare, sexp]
 
 type t = {
   kind : kind;
@@ -63,3 +80,19 @@ let real = Value.Tag.register ~name:"real"
 let ours = Value.Tag.register ~name:"ours"
     ~uuid:"e3fa1d96-40fb-464d-bad0-da4b82271991"
     (module Events)
+
+include Regular.Make(struct
+    type nonrec t = t [@@deriving bin_io, compare, sexp]
+    let compare = compare
+    let hash = Hashtbl.hash
+    let module_name = Some "Veri_result"
+    let version = "0.1"
+
+    let pp_dict fmt d =
+      Seq.iter ~f:(Format.fprintf fmt "%a " Value.pp)
+        (Dict.data d)
+
+    let pp fmt t =
+      Format.fprintf fmt "%a\n%a\n" Kind.pp t.kind pp_dict t.dict
+
+  end)

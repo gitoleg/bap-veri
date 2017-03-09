@@ -39,3 +39,5 @@ module Test_case : sig
   val iteri : trace -> Veri_policy.t -> f:(Veri_result.t -> int -> unit) -> unit Or_error.t
 
 end
+
+type test_case = Test_case.t

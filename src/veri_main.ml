@@ -31,31 +31,37 @@ let pp_evs fmt evs =
   List.iter ~f:(fun ev ->
       Format.(fprintf std_formatter "%a; " Value.pp ev)) evs
 
-let pp_data fmt (rule, matched) =
+let pp_data (rule, matched) =
   let open Veri_policy in
-  Format.fprintf fmt "%a\n%a" Veri_rule.pp rule Matched.pp matched
+  Format.printf "%a\n%a" Veri_rule.pp rule Matched.pp matched
 
-let print_report fmt result =
+let print_report result _ () =
   let module R = Veri_result in
   let get tag = Dict.find result.R.dict tag in
   let open Option in
   let _ =
+    get R.diff >>= fun diff ->
     get R.insn >>= fun insn ->
     get R.real >>= fun real ->
     get R.ours >>= fun ours ->
     get R.bytes >>= fun code ->
-    get R.diff >>= fun diff ->
     let bil = Insn.bil insn in
     let insn = Insn.name insn in
-    Format.fprintf fmt "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."
+    Format.printf "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."
       insn pp_code code pp_evs real pp_evs ours Bil.pp bil;
-    List.iter ~f:(pp_data fmt) diff;
+    List.iter ~f:pp_data diff;
     Format.print_newline ();
-    Some () in
+    None in
   Format.print_flush ()
 
+let report = Value.Tag.register ~name:"report"
+    ~uuid:"5786e900-cc73-4546-90cd-6ec97c20fd4f"
+    (module Unit)
+
+let report_case = Veri_info.Test_case.custom print_report ~init:() report
+
 module Stat = struct
-  module Q = Veri_numbers.Q
+  module Q = Veri_numbers
 
   let print_table fmt info data =
     let open Textutils.Std in
@@ -66,13 +72,15 @@ module Stat = struct
     Format.fprintf fmt "%s"
       (to_string ~bars:`Ascii ~display:Display.short_box cols data)
 
-  let pp_summary fmt s =
-    let n = Q.total s in
+  let pp_summary fmt stats =
+    let get kind = List.fold ~init:0
+        ~f:(fun x s -> x + Q.number s kind) stats in
+    let n = get `Total_number in
     if n = 0 then Format.fprintf fmt "summary is unavailable\n"
     else
       let pcnt x y = float x /. float y *. 100.0 in
       let make name kind =
-        let x = Q.abs s kind in name, pcnt x n, x in
+        let x = get kind in name, pcnt x n, x in
       let ps =
         [make "undisasmed" `Disasm_error;
          make "unsound semabtic" `Unsound_sema;
@@ -83,7 +91,7 @@ module Stat = struct
          "rel", (fun (_,x,_) -> Printf.sprintf "%.2f%%" x);
          "abs", (fun (_,_,x) -> Printf.sprintf "%d" x);] ps
 
-  let pp_unsound fmt s =
+  let pp_unsound fmt stats =
     Format.fprintf fmt "instructions with unsound semantic \n";
     let unite_by_name insns =
       Map.to_alist @@
@@ -91,8 +99,11 @@ module Stat = struct
           Map.change s (Insn.name insn) ~f:(function
               | None -> Some num
               | Some x -> Some (x + num))) ~init:String.Map.empty insns in
-    let unsound = unite_by_name @@ Q.insnsi s `Unsound_sema in
-    let success = unite_by_name @@ Q.insnsi s `Success in
+    let fold f = List.fold ~f:(fun xs s -> f s @ xs) ~init:[] stats in
+    let unsound s = unite_by_name @@ Q.insnsi s `Unsound_sema in
+    let success s = unite_by_name @@ Q.insnsi s `Success in
+    let unsound = fold unsound in
+    let success = fold success in
     let ok_num name =
       match List.find ~f:(fun (n,_) -> n = name) success with
       | None -> 0
@@ -105,10 +116,13 @@ module Stat = struct
         "successful", (fun (_,_,ok) -> Printf.sprintf "%d" ok); ]
       r
 
-  let pp_unknown fmt s =
+  let pp_unknown fmt stats =
     let max_row_len = 10 in
     let max_col_cnt = 5 in
-    let names = List.map ~f:Insn.name @@ Q.insns s `Unknown_sema in
+    let si = List.fold ~init:Insn.Set.empty stats
+        ~f:(fun s stat ->
+            List.fold ~f:Set.add ~init:s (Q.insns stat `Unknown_sema)) in
+    let names = List.map ~f:Insn.name @@ Set.to_list si  in
     match names with
     | [] -> ()
     | names when List.length names <= max_row_len ->
@@ -128,8 +142,8 @@ module Stat = struct
         make_col 0; make_col 1; make_col 2; make_col 3; make_col 4; ] in
       print_table fmt cols rows
 
-  let pp fmt t =
-    Format.fprintf fmt "%a\n%a\n" pp_unsound t pp_unknown t
+  let pp fmt stats =
+    Format.fprintf fmt "%a\n%a\n" pp_unsound stats pp_unknown stats
 
 end
 
@@ -156,10 +170,6 @@ module Program (O : Opts) = struct
       Veri_rule.Reader.of_path file |>
       List.fold ~f:Veri_policy.add ~init:Veri_policy.empty
 
-  let process s res =
-    if options.show_errs then print_report Format.std_formatter res;
-    Veri_numbers.add s res
-
   let eval_file file policy =
     let mk_er s = Error (Error.of_string s) in
     let uri = Uri.of_string ("file:" ^ file) in
@@ -168,7 +178,11 @@ module Program (O : Opts) = struct
       Printf.sprintf "error during loading trace: %s\n" (string_of_error er) |>
       mk_er
     | Ok trace ->
-      Veri_info.Test_case.fold trace policy ~init:Veri_numbers.empty ~f:process
+      let cases = Veri_numbers.cases in
+      let cases = if options.show_errs then
+          Array.append cases[| report_case |]
+        else cases in
+      Veri_info.Test_case.eval trace policy cases
 
   let read_dir path =
     let dir = Unix.opendir path in
@@ -195,21 +209,23 @@ module Program (O : Opts) = struct
     let policy = make_policy options.rules in
     let eval stats file =
       Format.(fprintf std_formatter "%s@." file);
-      match eval_file file policy with
+      Or_error.(
+        eval_file file policy >>= fun num ->
+        Veri_numbers.t_of_values num) |> function
       | Error er ->
         Error.to_string_hum er |>
         Printf.eprintf "error in verification: %s";
         stats
-      | Ok stat' -> (Filename.basename file, stat') :: stats in
-    let stats = List.fold ~init:[] ~f:eval files in
-    let stat = List.fold ~init:Veri_numbers.empty
-        ~f:Veri_numbers.merge (List.map ~f:snd stats) in
+      | Ok stat' ->
+        (Filename.basename file, stat') :: stats in
+    let named_stats = List.fold ~init:[] ~f:eval files in
+    let stats = List.map ~f:snd named_stats in
     if options.show_stat then
-      Stat.pp Format.std_formatter stat;
-    Format.(fprintf std_formatter "%a\n" Stat.pp_summary stat);
+      Format.printf "%a\n" Stat.pp stats;
+    Format.(printf "%a\n" Stat.pp_summary stats);
     match options.out with
     | None -> ()
-    | Some out -> Veri_out.output stats out
+    | Some out -> Veri_out.output named_stats out
 
 end
 

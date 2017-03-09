@@ -2,7 +2,7 @@ open Core_kernel.Std
 open Textutils.Std
 open Text_block
 
-module Q = Veri_numbers.Q
+module Q = Veri_numbers
 
 let make_iota max =
   let rec make acc n =
@@ -17,13 +17,18 @@ let texts_col title vals = make_col title ident vals
 let intgr_col title vals = make_col title (Printf.sprintf "%d") vals
 let float_col title vals = make_col title (Printf.sprintf "%.2f") vals
 
+let total q = Q.number q `Total_number
+
+let relat q kind =
+  float (Q.number q kind) /. float (total q)
+
 let output stats path =
   let of_stats f = List.map ~f:(fun x -> f (snd x)) stats in
   let out = Out_channel.create path in
   let cnter = intgr_col "#" (make_iota (List.length stats)) in
   let names = texts_col "file" (List.map ~f:fst stats) in
-  let total = intgr_col "total" (of_stats Q.total) in
-  let relat kind s = Q.relat s kind in
+  let total = intgr_col "total" (of_stats @@ total) in
+  let relat kind s = relat s kind in
   let prcnt = List.map
       ~f:(fun (name, f) -> float_col name (of_stats f))
              [ "successful, %",   relat `Success;
