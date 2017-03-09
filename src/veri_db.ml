@@ -18,12 +18,21 @@ let get_time () =
 
 let bap_version = Config.version
 
-let checked db action = function
+let checked ?cb db action q = match exec ?cb db q with
   | Rc.OK -> Ok ()
   | rc ->
     Or_error.error_string @@
     sprintf "error: can't %s: %s, %s\n" action (Rc.to_string rc)
       (Sqlite3.errmsg db)
+
+let tab_exists db name =
+  let q = sprintf
+      "SELECT name FROM sqlite_master WHERE type='table' AND \
+       name='%s'" name in
+  let a = ref None in
+  let cb x _ = a := x.(0) in
+  checked ~cb db (sprintf "check table %s exists" name) q >>= fun () ->
+  Ok (!a <> None)
 
 type env = {
   arch_info : string;
@@ -33,30 +42,99 @@ type env = {
   extra     : string;
 }
 
-let create_task_tab db =
-  let q =
-    "CREATE TABLE task (
-      Id INTEGER PRIMARY KEY NOT NULL,
-      Name TEXT);" in
-  checked db "create task tab" (exec db q)
+module Tab = struct
+  type t = {
+    name : string;
+    desc : string;
+  }
+
+  type typ = Int | Text
+  type traits = Not_null | Key
+
+  type col = string * typ * traits list
+
+  let try_add_traits to_add t traits =
+    if to_add then t::traits else traits
+
+  let string_of_typ = function
+    | Int -> "INTEGER"
+    | Text -> "TEXT"
+
+  let string_of_traits = function
+    | Not_null -> "NOT NULL"
+    | Key -> ""
+
+  let string_of_col (name, typ, traits) =
+    sprintf "%s %s %s" name (string_of_typ typ) @@
+    List.fold ~init:""
+      ~f:(fun s t -> sprintf "%s%s " s @@ string_of_traits t) traits
+
+  let col ?(key=false) ?(not_null=false) name typ =
+    let traits = try_add_traits
+        key Key (try_add_traits not_null Not_null []) in
+    name, typ, traits
+
+  let keys cols =
+    let is_key (_,_,t) = List.exists ~f:(fun t -> t = Key) t in
+    List.filter ~f:is_key cols
+
+  let col_name (x,_,_) = x
+
+  let create name cols =
+    let keys = List.map ~f:col_name (keys cols) in
+    let keys = String.concat ~sep:", " keys in
+    let cols = List.map ~f:string_of_col cols in
+    let cols = String.concat ~sep:", " cols in
+    let desc = sprintf
+        "CREATE TABLE %s (%s, PRIMARY KEY (%s));" name cols keys in
+    {name; desc}
+
+  let add db tab =
+    checked db (sprintf "create %s tab" tab.name) tab.desc
+
+  let add_if_absent db tab =
+    tab_exists db tab.name >>= fun r ->
+    if not r then add db tab
+    else Ok ()
+
+end
+
+let task_tab = Tab.(create "task" [
+    col ~key:true ~not_null:true "Id" Int;
+    col "Name" Text;
+  ])
+
+let env_tab = Tab.(create "env" [
+    col ~key:true ~not_null:true "Id_task" Int;
+    col ~not_null:true "Date" Text;
+    col ~not_null:true "Bap" Text;
+    col ~not_null:true "Arch" Text;
+    col "Comp_ops" Text;
+    col "Obj_ops" Text;
+    col "Policy" Text;
+    col "Extra" Text;
+  ])
+
+let insn_tab = Tab.(create "insn" [
+    col ~key:true ~not_null:true "Id_task" Int;
+    col ~key:true ~not_null:true "Id_insn" Int;
+    col ~not_null:true "Bytes" Text;
+    col "Name" Text;
+    col "Asm" Text;
+    col "Bil" Text;
+    col "Indexes" Text;
+    col "Successful" Int;
+    col "Undisasmed" Int;
+    col "Unsound_sema" Int;
+    col "Unknown_sema" Int;
+  ])
+
 
 let add_task db target_name =
   let q = sprintf
     "INSERT INTO task VALUES (NULL, '%s');" target_name in
-  checked db "add task" (exec db q) >>= fun () ->
+  checked db "add task" q >>= fun () ->
   Ok (last_insert_rowid db)
-
-let create_env_tab db =
-  let q = "CREATE TABLE env (
-       Id_task INTEGER PRIMARY KEY NOT NULL,
-       Date TEXT NOT NULL,
-       Bap TEXT NOT NULL,
-       Arch TEXT NOT NULL,
-       Comp_ops TEXT,
-       Obj_ops TEXT,
-       Policy TEXT,
-       Extra TEXT);" in
-  checked db "create env tab" (exec db q)
 
 let add_env db task_id env =
   let q = sprintf "INSERT INTO env
@@ -69,23 +147,7 @@ let add_env db task_id env =
       env.obj_ops
       env.policy
       env.extra in
-  checked db "add env" (exec db q)
-
-let create_insn_tab db =
-  let q = "CREATE TABLE insn (
-    Id_task INTEGER NOT NULL,
-    Id_insn INTEGER NOT NULL,
-    Bytes TEXT NOT NULL,
-    Name TEXT,
-    Asm TEXT,
-    Bil TEXT,
-    Indexes TEXT,
-    Successful INTEGER,
-    Undisasmed INTEGER,
-    Unsound_sema INTEGER,
-    Unknown_sema INTEGER,
-    PRIMARY KEY (Id_task, Id_insn));" in
-  checked db "create insn tab" (exec db q)
+  checked db "add env" q
 
 class tmp_var_mapper = object
   inherit Stmt.mapper
@@ -106,17 +168,34 @@ let get_bil insn =
 
 let str_of_bytes b =
   String.fold b ~init:""
-    ~f:(fun s c ->
-        sprintf "%s %X" s (Char.to_int c))
+    ~f:(fun s c -> sprintf "%s %X" s (Char.to_int c))
 
 let str_of_indexes inds =
   let ss = List.map ~f:(sprintf "%d ") inds in
   String.concat ss
 
-let add_insns db task_id result =
+let insn_row task_id insn_id bytes result =
   let str_of_insn ~f = function
     | None -> ""
     | Some i -> f i in
+  let suc = Q.bytes_number result `Success bytes in
+  let und = Q.bytes_number result `Disasm_error bytes in
+  let uns = Q.bytes_number result `Unsound_sema bytes in
+  let unk = Q.bytes_number result `Unknown_sema bytes in
+  let ins = Q.find_insn result bytes in
+  let ind = Q.find_indexes result bytes in
+  sprintf
+    "('%Ld', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d')"
+    task_id
+    insn_id
+    (str_of_bytes bytes)
+    (str_of_insn ~f:Insn.name ins)
+    (str_of_insn ~f:Insn.asm ins)
+    (str_of_insn ~f:get_bil ins)
+    (str_of_indexes ind)
+    suc und uns unk
+
+let add_insns db task_id result =
   let add kind s =
     List.fold ~f:Set.add ~init:s (Q.bytes result kind) in
   let all =
@@ -125,51 +204,27 @@ let add_insns db task_id result =
     add `Unsound_sema |>
     add `Unknown_sema in
   let qs,_ =
-    Set.fold ~init:([], 0)
-      ~f:(fun (qs, cnt) b ->
-          let suc = Q.bytes_number result `Success b in
-          let und = Q.bytes_number result `Disasm_error b in
-          let uns = Q.bytes_number result `Unsound_sema b in
-          let unk = Q.bytes_number result `Unknown_sema b in
-          let ins = Q.find_insn result b in
-          let ind = Q.find_indexes result b in
-          let q = sprintf
-              "('%Ld', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d')"
-              task_id
-              cnt
-              (str_of_bytes b)
-              (str_of_insn ~f:Insn.name ins)
-              (str_of_insn ~f:Insn.asm ins)
-              (str_of_insn ~f:get_bil ins)
-              (str_of_indexes ind)
-              suc und uns unk in
-          let q = if cnt = 0 then q ^ ";" else q in
-          q :: qs, cnt + 1) all in
+    Set.fold ~init:([], 0) ~f:(fun (qs, cnt) b ->
+        let fin = if cnt = 0 then ";" else "" in
+        (insn_row task_id cnt b result ^ fin) :: qs, cnt + 1) all in
   match qs with
   | fst :: others ->
     let intro = "INSERT INTO insn VALUES " ^ fst  in
     let query = String.concat ~sep:", " (intro :: others) in
-    checked db "add insn" (exec db  query)
+    checked db "add insn" query
   | [] -> Ok ()
 
 let open_db name =
-  let try_open name =
-    try
-      Some (db_open ~mode:`NO_CREATE name)
-    with _ -> None in
-  match try_open name with
-  | Some db -> Ok db
-  | None ->
-    let db = db_open name in
-    create_task_tab db >>= fun () ->
-    create_env_tab db >>= fun () ->
-    create_insn_tab db >>= fun () ->
-    Ok db
+  let add = Tab.add_if_absent in
+  let db = db_open name in
+  add db task_tab >>= fun () ->
+  add db env_tab >>= fun () ->
+  add db insn_tab >>= fun () ->
+  Ok db
 
 let close_db db =
   if db_close db then ()
-  else
-    eprintf "warning! database wasn't closed properly\n"
+  else eprintf "warning! database wasn't closed properly\n"
 
 let arch trace = match Dict.find (Trace.meta trace) Meta.arch with
   | None -> Or_error.error_string "trace of unknown arch"
