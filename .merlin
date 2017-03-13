@@ -1,7 +1,9 @@
-B _build/lib
+B _build/lib/veri
+B _build/lib/veri_db
 B _build/src
 B _build/tests
-S lib
+S lib/veri/
+S lib/veri_db
 S src
 S tests
 

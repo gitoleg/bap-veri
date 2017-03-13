@@ -1,6 +1,5 @@
 open Core_kernel.Std
 open Or_error
-open Sqlite3
 open Bap.Std
 open Bap_traces.Std
 
@@ -18,22 +17,6 @@ let get_time () =
 
 let bap_version = Config.version
 
-let checked ?cb db action q = match exec ?cb db q with
-  | Rc.OK -> Ok ()
-  | rc ->
-    Or_error.error_string @@
-    sprintf "error: can't %s: %s, %s\n" action (Rc.to_string rc)
-      (Sqlite3.errmsg db)
-
-let tab_exists db name =
-  let q = sprintf
-      "SELECT name FROM sqlite_master WHERE type='table' AND \
-       name='%s'" name in
-  let a = ref None in
-  let cb x _ = a := x.(0) in
-  checked ~cb db (sprintf "check table %s exists" name) q >>= fun () ->
-  Ok (!a <> None)
-
 type kind = Trace | Static [@@deriving sexp]
 
 module Tab = struct
@@ -46,6 +29,13 @@ module Tab = struct
   type traits = Not_null | Key
 
   type col = string * typ * traits list
+
+  let checked ?cb db action q = match Sqlite3.exec ?cb db q with
+    | Sqlite3.Rc.OK -> Ok ()
+    | rc ->
+      Or_error.error_string @@
+      sprintf "error: can't %s: %s, %s\n" action (Sqlite3.Rc.to_string rc)
+        (Sqlite3.errmsg db)
 
   let try_add_traits to_add t traits =
     if to_add then t::traits else traits
@@ -86,8 +76,17 @@ module Tab = struct
   let add db tab =
     checked db (sprintf "create %s tab" tab.name) tab.desc
 
+  let exists db name =
+    let q = sprintf
+        "SELECT name FROM sqlite_master WHERE type='table' AND \
+         name='%s'" name in
+    let a = ref None in
+    let cb x _ = a := x.(0) in
+    checked ~cb db (sprintf "check table %s exists" name) q >>= fun () ->
+    Ok (!a <> None)
+
   let add_if_absent db tab =
-    tab_exists db tab.name >>= fun r ->
+    exists db tab.name >>= fun r ->
     if not r then add db tab
     else Ok ()
 
@@ -160,7 +159,7 @@ let insn_tab = Tab.(create "insn" [
 let add_task db name =
   let data = sprintf "(NULL, '%s')" name in
   Tab.insert db task_tab [data] >>= fun () ->
-  Ok (last_insert_rowid db)
+  Ok (Sqlite3.last_insert_rowid db)
 
 let add_info db task_id kind ~name ~arch ~comp_ops ~extra =
   let data = sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s', '%s', '%s')"
@@ -263,7 +262,7 @@ let add_dyn db task_id result =
   add_task_insns db task_id ids
 
 let open_db name =
-  let db = db_open name in
+  let db = Sqlite3.db_open name in
   let add = Tab.add_if_absent db in
   add task_tab >>= fun () ->
   add info_tab >>= fun () ->
@@ -274,7 +273,7 @@ let open_db name =
   Ok db
 
 let close_db db =
-  if db_close db then ()
+  if Sqlite3.db_close db then ()
   else eprintf "warning! database wasn't closed properly\n"
 
 let arch trace = match Dict.find (Trace.meta trace) Meta.arch with
