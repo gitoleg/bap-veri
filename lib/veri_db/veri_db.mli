@@ -1,44 +1,33 @@
 (**
 
-
-                                       binary_obj
-             info                 +-------------------+
-    +-------------------+         | * Id_obj  : Int   |>>--------+
-    | * Id       : Int  |<<---+-<<| * Id_info : Int   |          |
-    |-------------------|     |   +-------------------+          |
-    |   Name     : Text |     |                                  |
-    |   Date     : Text |     |                                  |
-    |   Bap      : Text |     |                                  |
-    |   Arch     : Text |     |                                  |
-    |   Comp_ops : Text |     |                                  |
-    |   Extra    : Text |     |             task                 |
-    +-------------------+     |     +---------------------+      |
-                              +---<<| * Id_info     : Int |      |
-                            +-----<<| * Id_dyn_info : Int |      |
-                            |   +-<<| * Id_task     : Int |      |
-                            |   |   +---------------------+      |
-         dynamic_info       |   |                                |
-    +-------------------+   |   |                                |
-    | * Id       : Int  |<<-+   |           binary_insn          |
-    |-------------------|       |      +------------------+      |
-    |   Obj_ops  : Text |       |      | * Id_obj  : Int  |<<----+
-    |   Policy   : Text |       |      | * Id_insn : Int  |>>----+
-    +-------------------+       |      +------------------+      |
-                                |                                |
-                                |                                |
-         dynamic_data           |                                |
-    +-----------------------+   |              insn              |
-    | * Id_task      : Int  |<<-+      +------------------+      |
-    | * Id_insn      : Int  |>>------>>| * Id_insn : Int  |<<----+
-    |-----------------------|          |------------------|
-    |   Indexes      : Text |          |   Bytes   : Text |
-    |   Successful   : Int  |          |   Name    : Text |
-    |   Undisasmed   : Int  |          |   Asm     : Text |
-    |   Unsound_sema : Int  |          |   Bil     : Text |
-    |   Unknown_sema : Int  |          +------------------+
-    +-----------------------+
-
-
+           info                                dynamic_data
+ +-------------------+                    +-----------------------+
+ | * Task_id  : Int  |<<--+               | * Id_task      : Int  |<<-+
+ |-------------------|    |               | * Id_insn      : Int  |<<-|
+ |   Kind     : Text |    |               |-----------------------|   |
+ |   Name     : Text |    |               |   Indexes      : Text |   |
+ |   Date     : Text |    |               |   Successful   : Int  |   |
+ |   Bap      : Text |    |               |   Undisasmed   : Int  |   |
+ |   Arch     : Text |    |               |   Unsound_sema : Int  |   |
+ |   Comp_ops : Text |    |               |   Unknown_sema : Int  |   |
+ |   Extra    : Text |    |               +-----------------------+   |
+ +-------------------+    |                                           |
+                          |       task               task_insn        |
+                          |  +------------+     +-----------------+   |
+                          +-<| * Id : Int |>-->>| * Task_id : Int |>--|
+                          |  |------------|  +-<| * Insn_id : Int |>--+
+      dynamic_info        |  | Name : Text|  |  +-----------------+
+ +-------------------+    |  +------------+  |
+ | * Task_id  : Int  |<<--+                  |
+ |-------------------|                       |         insn
+ |   Obj_ops  : Text |                       |  +-----------------+
+ |   Policy   : Text |                       +>>| * Id     : Int  |
+ +-------------------+                          |-----------------|
+                                                |   Bytes  : Text |
+                                                |   Name   : Text |
+                                                |   Asm    : Text |
+                                                |   Bil    : Text |
+                                                +-----------------+
 *)
 
 open Core_kernel.Std
@@ -52,14 +41,17 @@ val update_with_trace :
   ?compiler_ops:string list ->
   ?object_ops:string list ->
   ?extra:string ->
+  ?trace_name:string ->
   Trace.t ->
   Veri_rule.t list ->
   Veri_numbers.t ->
   string -> unit Or_error.t
 
-(** [update_insns : ~db:db_name arch ~bin:binary_name insns]  *)
-val update_with_binary :
-  db:string ->
+(** [update_with_static arch ~name insns db]  *)
+val update_with_static :
   ?compiler_ops:string list ->
+  ?extra:string ->
+  name:string ->
   arch ->
-  bin:string -> (mem * insn) seq -> unit Or_error.t
+  (mem * insn) seq ->
+  string -> unit Or_error.t

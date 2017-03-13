@@ -34,12 +34,7 @@ let tab_exists db name =
   checked ~cb db (sprintf "check table %s exists" name) q >>= fun () ->
   Ok (!a <> None)
 
-type info = {
-  name      : string;
-  arch_info : string;
-  comp_ops  : string;
-  extra     : string;
-}
+type kind = Trace | Static [@@deriving sexp]
 
 module Tab = struct
   type t = {
@@ -118,18 +113,13 @@ module Tab = struct
 end
 
 let task_tab = Tab.(create "task" [
-    col ~key:true ~not_null:true "Id_info" Int;
-    col ~key:true ~not_null:true "Id_dyn_info" Int;
-    col ~key:true ~not_null:true "Id_task" Int;
-  ])
-
-let binary_obj_tab = Tab.(create "binary_obj" [
-    col ~key:true ~not_null:true "Id_obj" Int;
-    col ~key:true ~not_null:true "Id_info" Int;
+    col ~key:true ~not_null:true "Id" Int;
+    col ~not_null:true "Name" Text;
   ])
 
 let info_tab = Tab.(create "info" [
     col ~key:true ~not_null:true "Id" Int;
+    col ~not_null:true "Kind" Text;
     col ~not_null:true "Name" Text;
     col ~not_null:true "Date" Text;
     col ~not_null:true "Bap" Text;
@@ -140,7 +130,7 @@ let info_tab = Tab.(create "info" [
 
 let dyn_info_tab = Tab.(create "dynamic_info" [
     col ~key:true ~not_null:true "Id" Int;
-    col "Obj_ops" Text;
+    col "Task_ops" Text;
     col "Policy" Text;
   ])
 
@@ -154,11 +144,10 @@ let dyn_data_tab = Tab.(create "dynamic_data" [
     col "Unknown_sema" Int;
   ])
 
-let bin_insn_tab = Tab.(create "binary_insn" [
-    col ~key:true ~not_null:true "Id_obj" Int;
+let task_insn_tab = Tab.(create "task_insn" [
+    col ~key:true ~not_null:true "Id_task" Int;
     col ~key:true ~not_null:true "Id_insn" Int;
   ])
-
 
 let insn_tab = Tab.(create "insn" [
     col ~key:true ~not_null:true "Id" Int;
@@ -168,31 +157,32 @@ let insn_tab = Tab.(create "insn" [
     col "Bil" Text;
   ])
 
-let register_task =
-  let x = ref 0L in
-  fun () -> let r = !x in x := Int64.succ !x; r
-
-let add_task db info_id dyn_info_id =
-  let id = register_task () in
-  let data = sprintf "('%Ld', '%Ld', '%Ld')" info_id dyn_info_id id in
+let add_task db name =
+  let data = sprintf "(NULL, '%s')" name in
   Tab.insert db task_tab [data] >>= fun () ->
   Ok (last_insert_rowid db)
 
-let add_info db ~name ~arch ~comp_ops ~extra =
-  let data = sprintf "(NULL, '%s', '%s', '%s', '%s', '%s', '%s')"
+let add_info db task_id kind ~name ~arch ~comp_ops ~extra =
+  let data = sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s', '%s', '%s')"
+      task_id
+      (Sexp.to_string (sexp_of_kind kind))
       name
       (get_time ())
       bap_version
       arch
       comp_ops
       extra in
-  Tab.insert db info_tab [data] >>= fun () ->
-  Ok (last_insert_rowid db)
+  Tab.insert db info_tab [data]
 
-let add_dyn_info db policy obj_ops =
-  let data = sprintf "(NULL, '%s', '%s')" obj_ops  policy in
-  Tab.insert db dyn_info_tab [data] >>= fun () ->
-  Ok (last_insert_rowid db)
+let sql_quote str =
+  let module S = String.Search_pattern in
+  S.replace_all (S.create "'") ~in_:str ~with_:"''"
+
+let add_dyn_info db task_id rules obj_ops =
+  let policy = sql_quote @@ List.fold ~init:"" ~f:(fun s r ->
+      sprintf "%s%s; " s (Veri_rule.to_string r)) rules in
+  let data = sprintf "('%Ld', '%s', '%s')" task_id obj_ops policy in
+  Tab.insert db dyn_info_tab [data]
 
 class tmp_var_mapper = object
   inherit Stmt.mapper
@@ -212,8 +202,9 @@ let get_bil insn =
   Sexp.to_string (Bil.sexp_of_t bil)
 
 let str_of_bytes b =
-  String.fold b ~init:""
-    ~f:(fun s c -> sprintf "%s %X" s (Char.to_int c))
+  String.fold b ~init:[]
+    ~f:(fun s c -> (sprintf "%X" @@ Char.to_int c) :: s) |>
+  List.rev |> String.concat ~sep:" "
 
 let str_of_indexes inds =
   let ss = List.map ~f:string_of_int inds in
@@ -228,17 +219,16 @@ let make_dyn_data task_id insn_id bytes result =
   sprintf "('%Ld', '%Ld', '%s', '%d', '%d', '%d', '%d')"
     task_id insn_id (str_of_indexes ind) suc und uns unk
 
-let make_dyn_insn db id bytes result =
-  let ins = Q.find_insn result bytes in
+let make_insn db id bytes insn =
   let str_of_insn ~f = function
     | None -> ""
     | Some i -> f i in
   sprintf "('%Ld', '%s', '%s', '%s', '%s')"
       id
       (str_of_bytes bytes)
-      (str_of_insn ~f:Insn.name ins)
-      (str_of_insn ~f:Insn.asm ins)
-      (str_of_insn ~f:get_bil ins)
+      (str_of_insn ~f:Insn.name insn)
+      (str_of_insn ~f:Insn.asm insn)
+      (str_of_insn ~f:get_bil insn)
 
 let make_dyn db task_id insn_id result =
   let add kind s =
@@ -248,30 +238,37 @@ let make_dyn db task_id insn_id result =
     add `Disasm_error |>
     add `Unsound_sema |>
     add `Unknown_sema in
-  Set.fold ~init:([],[],insn_id) ~f:(fun (data, insns, insn_id) b ->
-      let d = make_dyn_data task_id insn_id b result in
-      let i = make_dyn_insn db insn_id b result in
-      d :: data, i :: insns, Int64.succ insn_id) all
+  Set.fold ~init:([],[],[],insn_id)
+    ~f:(fun (data, insns, ids, insn_id) bytes ->
+      let insn = Q.find_insn result bytes in
+      let d = make_dyn_data task_id insn_id bytes result in
+      let i = make_insn db insn_id bytes insn in
+      d :: data, i :: insns, insn_id::ids, Int64.succ insn_id) all
 
-let get_max_insn_id db =
+let add_task_insns db task_id ids =
+  let data =
+    List.map ~f:(fun id -> sprintf "('%Ld', '%Ld')" task_id id) ids in
+  Tab.insert db task_insn_tab data
+
+let get_insn_id db =
   Tab.get_max db insn_tab "Id" >>= fun x -> match x with
   | None -> Ok Int64.zero
-  | Some x -> Ok (Int64.of_string x)
+  | Some x -> Ok (Int64.succ @@ Int64.of_string x)
 
 let add_dyn db task_id result =
-  get_max_insn_id db >>= fun insn_id ->
-  let data, insn_data,_ = make_dyn db task_id insn_id result in
+  get_insn_id db >>= fun insn_id ->
+  let data, insn_data, ids, _ = make_dyn db task_id insn_id result in
   Tab.insert db dyn_data_tab data >>= fun () ->
-  Tab.insert db insn_tab insn_data
+  Tab.insert db insn_tab insn_data >>= fun () ->
+  add_task_insns db task_id ids
 
 let open_db name =
   let db = db_open name in
   let add = Tab.add_if_absent db in
-  add binary_obj_tab >>= fun () ->
   add task_tab >>= fun () ->
   add info_tab >>= fun () ->
   add dyn_info_tab >>= fun () ->
-  add bin_insn_tab >>= fun () ->
+  add task_insn_tab >>= fun () ->
   add insn_tab >>= fun () ->
   add dyn_data_tab >>= fun () ->
   Ok db
@@ -289,10 +286,6 @@ let target_name trace =
   | None -> Or_error.error_string "trace of unknown name"
   | Some bin -> Ok (Filename.basename bin.Binary.path)
 
-let sql_quote str =
-  let module S = String.Search_pattern in
-  S.replace_all (S.create "'") ~in_:str ~with_:"''"
-
 let with_default ~def x = Option.value_map ~default:def ~f:ident x
 
 let concat_ops ops =
@@ -302,30 +295,52 @@ let concat_ops ops =
 let with_close db r = close_db db; r
 
 let update_with_trace
-    ?compiler_ops ?object_ops ?extra trace rules result name =
+    ?compiler_ops ?object_ops ?extra ?trace_name trace rules result name =
   open_db name >>= fun db ->
-  with_close db @@
-  (target_name trace >>= fun name ->
-  arch trace >>= fun arch ->
-  let arch = Arch.to_string arch in
+  let r =
+    target_name trace >>= fun name ->
+    arch trace >>= fun arch ->
+    let arch = Arch.to_string arch in
+    let comp_ops = concat_ops compiler_ops in
+    let extra = with_default ~def:"" extra in
+    let obj_ops = concat_ops object_ops in
+    let trace_name = with_default ~def:"" trace_name in
+    add_task db trace_name >>= fun task_id ->
+    add_info db task_id Trace ~name ~arch ~comp_ops ~extra >>= fun () ->
+    add_dyn_info db task_id rules obj_ops >>= fun () ->
+    add_dyn db task_id result in
+  with_close db r
+
+let mem_to_str mem =
+  let deref mem =
+    Seq.unfold_step ~init:(Memory.min_addr mem)
+      ~f:(fun addr ->
+          match Memory.get ~addr mem with
+          | Ok word -> Seq.Step.Yield (word, Word.succ addr)
+          | Error _ -> Seq.Step.Done) in
+  let to_int w = ok_exn (Word.to_int w) in
+  Seq.map ~f:(fun w -> sprintf "%02X" @@ to_int w) (deref mem) |>
+  Seq.to_list |> String.concat ~sep:" "
+
+let add_insns db task_id insns =
+  get_insn_id db >>= fun insn_id ->
+  let insns,ids,_ =
+    Seq.fold ~init:([],[],insn_id)
+      ~f:(fun (data, ids, id) (mem, insn) ->
+          let bytes = mem_to_str mem in
+          let next = Int64.succ id in
+          make_insn db id bytes (Some insn) :: data, id :: ids, next)
+      insns in
+  Tab.insert db insn_tab insns >>= fun () ->
+  add_task_insns db task_id ids
+
+let update_with_static ?compiler_ops ?extra ~name arch insns db =
   let comp_ops = concat_ops compiler_ops in
   let extra = with_default ~def:"" extra in
-  add_info db ~name ~arch ~comp_ops ~extra >>= fun info_id ->
-  let policy = sql_quote @@ List.fold ~init:"" ~f:(fun s r ->
-      sprintf "%s%s; " s (Veri_rule.to_string r)) rules in
-  let obj_ops = concat_ops object_ops in
-  add_dyn_info db policy obj_ops >>= fun dyn_info_id ->
-  add_task db info_id dyn_info_id >>= fun task_id ->
-  add_dyn db task_id result)
-
-
-  (* make_env ?compiler_ops ?object_ops ?extra trace rules >>= fun env -> *)
-  (* open_db name >>= fun db -> *)
-  (* with_close db @@ add_data db trace env result *)
-
-(* let add_static_env db arch comp_ops = *)
-(*   let comp_ops = concat_ops comp_ops in *)
-
-
-let update_with_binary ~db ?compiler_ops arch ~bin insns =
-  failwith "unimplemented"
+  let arch = Arch.to_string arch in
+  open_db db >>= fun db ->
+  let r =
+    add_task db name >>= fun task_id ->
+    add_info db task_id Static ~name ~arch ~comp_ops ~extra >>= fun () ->
+    add_insns db task_id insns in
+  with_close db r

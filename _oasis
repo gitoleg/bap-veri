@@ -12,7 +12,7 @@ BuildTools:   ocamlbuild
 BuildDepends: ppx_jane, core_kernel, bap, bap-traces
 
 Library veri
-  Path:           lib
+  Path:           lib/veri
   FindLibName:    bap-veri
   Modules:        Veri,
                   Veri_chunki,
@@ -28,6 +28,15 @@ Library veri
   ByteOpt:        -pp 'ppx-jane -dump-ast'
   BuildDepends:   pcre, textutils, threads
 
+Library veri_db
+  Path:           lib/veri_db
+  FindLibName:    bap-veri-db
+  Modules:        Veri_db
+  Install:        true
+  NativeOpt:      -pp 'ppx-jane -dump-ast'
+  ByteOpt:        -pp 'ppx-jane -dump-ast'
+  BuildDepends:   bap-veri, sqlite3
+
 Library veri_test
   Path:           tests
   Build$:         flag(tests)
@@ -38,6 +47,15 @@ Library veri_test
                   Veri_rule_test,
                   Veri_stat_test
   BuildDepends:   bap-veri, oUnit
+
+Library veri_static_plugin
+  Path:             src
+  FindlibName:      veri-static-plugin
+  CompiledObject:   best
+  Install:          true
+  BuildDepends:     bap, bap-veri, bap-veri-db
+  InternalModules:  Veri_static
+  XMETADescription: updates a database with static information
 
 Executable "bap-veri"
   Path:           src
@@ -68,4 +86,4 @@ Executable "veri-task"
   Install:        true
   NativeOpt:      -pp 'ppx-jane -dump-ast'
   ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner, sqlite3
+  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, bap-veri-db, cmdliner

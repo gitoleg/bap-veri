@@ -71,7 +71,8 @@ let eval_file db_name extra rules target =
   let r = trace_of_path target >>= fun trace ->
     Veri_info.Test_case.eval trace p Veri_numbers.cases >>= fun vals ->
     Veri_numbers.t_of_values vals >>= fun res ->
-    Veri_db.update_with_trace ~extra trace rules res db_name  in
+    Veri_db.update_with_trace
+      ?object_ops:(obj_ops trace) ~extra ~trace_name:target trace rules res db_name in
   match r with
   | Ok () -> ()
   | Error er -> eprintf "%s" @@ Error.to_string_hum er
