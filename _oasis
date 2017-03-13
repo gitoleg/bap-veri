@@ -48,15 +48,6 @@ Library veri_test
                   Veri_stat_test
   BuildDepends:   bap-veri, oUnit
 
-Library veri_static_plugin
-  Path:             src
-  FindlibName:      veri-static-plugin
-  CompiledObject:   best
-  Install:          true
-  BuildDepends:     bap, bap-veri, bap-veri-db
-  InternalModules:  Veri_static
-  XMETADescription: updates a database with static information
-
 Executable "bap-veri"
   Path:           src
   MainIs:         veri_main.ml

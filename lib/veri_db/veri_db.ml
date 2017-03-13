@@ -324,12 +324,15 @@ let mem_to_str mem =
 
 let add_insns db task_id insns =
   get_insn_id db >>= fun insn_id ->
+  let insns =
+    Seq.fold ~init:Insn.Map.empty
+      ~f:(fun s (m,i) -> Map.add s ~key:i ~data:m) insns in
   let insns,ids,_ =
-    Seq.fold ~init:([],[],insn_id)
-      ~f:(fun (data, ids, id) (mem, insn) ->
-          let bytes = mem_to_str mem in
+    Map.fold ~init:([],[],insn_id)
+      ~f:(fun ~key ~data (insns, ids, id)  ->
+          let bytes = mem_to_str data in
           let next = Int64.succ id in
-          make_insn db id bytes (Some insn) :: data, id :: ids, next)
+          make_insn db id bytes (Some key) :: insns, id :: ids, next)
       insns in
   Tab.insert db insn_tab insns >>= fun () ->
   add_task_insns db task_id ids
