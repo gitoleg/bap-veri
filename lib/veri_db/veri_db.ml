@@ -90,13 +90,22 @@ module Tab = struct
     if not r then add db tab
     else Ok ()
 
+  let insert_n db tab data n =
+    let data = List.groupi ~break:(fun i _ _ -> i mod n = 0) data in
+    List.fold ~init:(Ok ())
+      ~f:(fun r data ->
+          match r with
+          | Error _ as r -> r
+          | Ok () ->
+            let data = String.concat ~sep:"," data in
+            let query = sprintf "INSERT INTO %s VALUES %s;" tab.name data in
+            checked db (sprintf "insert into %s" tab.name) query) data
+
   let insert db tab data =
     match data with
     | [] -> Ok ()
     | data ->
-      let data = String.concat ~sep:"," data in
-      let query = sprintf "INSERT INTO %s VALUES %s;" tab.name data in
-      checked db (sprintf "insert into %s" tab.name) query
+      insert_n db tab data 100
 
   let get_max db tab col =
     let q = sprintf "SELECT MAX(%s) FROM %s" col tab.name in
