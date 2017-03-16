@@ -34,8 +34,8 @@ module Tab = struct
     | Sqlite3.Rc.OK -> Ok ()
     | rc ->
       Or_error.error_string @@
-      sprintf "error: can't %s: %s, %s\n" action (Sqlite3.Rc.to_string rc)
-        (Sqlite3.errmsg db)
+      sprintf "error: can't %s: %s, %s\n%s\n" action (Sqlite3.Rc.to_string rc)
+        (Sqlite3.errmsg db) q
 
   let try_add_traits to_add t traits =
     if to_add then t::traits else traits
