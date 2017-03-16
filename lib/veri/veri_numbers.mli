@@ -40,3 +40,6 @@ val find_insn : t -> ?query:query -> string -> Insn.t option
     given [bytes]. If [query] is provided then returns indexes
     according to a query only. *)
 val find_indexes : t -> ?query:query -> string -> int list
+
+
+val find_addrs : t -> ?query:query -> string -> addr list

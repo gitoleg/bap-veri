@@ -31,8 +31,6 @@ type t = {
   dict : dict;
 } [@@deriving bin_io, compare, sexp]
 
-include Regular.S with type t := t
-
 type diff = Veri_policy.result list [@@deriving bin_io, compare, sexp]
 type events = Trace.event list [@@deriving bin_io, compare, sexp]
 
@@ -42,3 +40,6 @@ val insn  : Insn.t tag
 val diff  : diff tag
 val real  : events tag
 val ours  : events tag
+val addr  : addr tag
+
+include Regular.S with type t := t

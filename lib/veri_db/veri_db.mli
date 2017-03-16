@@ -2,7 +2,7 @@
 
            info                                dynamic_data
  +-------------------+                    +-----------------------+
- | * Task_id  : Int  |<<--+               | * Id_task      : Int  |<<-+
+ | * Task_id  : Int  |<---+               | * Id_task      : Int  |<<-+
  |-------------------|    |               | * Id_insn      : Int  |<<-|
  |   Kind     : Text |    |               |-----------------------|   |
  |   Name     : Text |    |               |   Indexes      : Text |   |
@@ -18,7 +18,7 @@
                           |  |------------|  +-<| * Insn_id : Int |>--+
       dynamic_info        |  | Name : Text|  |  +-----------------+
  +-------------------+    |  +------------+  |
- | * Task_id  : Int  |<<--+                  |
+ | * Task_id  : Int  |<---+                  |
  |-------------------|                       |         insn
  |   Obj_ops  : Text |                       |  +-----------------+
  |   Policy   : Text |                       +>>| * Id     : Int  |
@@ -47,11 +47,12 @@ val update_with_trace :
   Veri_numbers.t ->
   string -> unit Or_error.t
 
-(** [update_with_static arch ~name insns db]  *)
+(** [update_with_static arch ~name mems insns db]  *)
 val update_with_static :
   ?compiler_ops:string list ->
   ?extra:string ->
   name:string ->
   arch ->
+  (addr * addr) list ->
   (mem * insn) seq ->
   string -> unit Or_error.t

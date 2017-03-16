@@ -81,6 +81,10 @@ let ours = Value.Tag.register ~name:"ours"
     ~uuid:"e3fa1d96-40fb-464d-bad0-da4b82271991"
     (module Events)
 
+let addr = Value.Tag.register ~name:"insn address"
+    ~uuid:"b77f07ab-9eeb-45ce-b7c5-2efb310b030d"
+    (module Addr)
+
 include Regular.Make(struct
     type nonrec t = t [@@deriving bin_io, compare, sexp]
     let compare = compare

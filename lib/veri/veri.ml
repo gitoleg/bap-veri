@@ -122,8 +122,9 @@ class context policy trace = object(self:'s)
   method switch  = (Option.value_exn other)#save self
   method drop_pc = self#with_pc Bil.Bot
   method set_code c =
+    let dict = update_dict dict Veri_result.addr  (Chunk.addr c) in
     let dict = update_dict dict Veri_result.bytes (Chunk.data c) in
-    {< code = Some c; dict = dict >}
+    {< code = Some c; dict = dict; >}
 
 end
 

@@ -154,6 +154,14 @@ let insn_tab = Tab.(create "insn" [
     col "Name" Text;
     col "Asm" Text;
     col "Bil" Text;
+    col "Addrs" Text;
+  ])
+
+let bin_info_tab = Tab.(create "bin_info" [
+    col ~key:true ~not_null:true "Id_task" Int;
+    col ~key:true ~not_null:true "Id" Int;
+    col ~not_null:true "Min_addr" Int;
+    col ~not_null:true "Max_addr" Int;
   ])
 
 let add_task db name =
@@ -218,16 +226,24 @@ let make_dyn_data task_id insn_id bytes result =
   sprintf "('%Ld', '%Ld', '%s', '%d', '%d', '%d', '%d')"
     task_id insn_id (str_of_indexes ind) suc und uns unk
 
-let make_insn db id bytes insn =
+let make_insn db id bytes insn addrs =
   let str_of_insn ~f = function
     | None -> ""
     | Some i -> f i in
-  sprintf "('%Ld', '%s', '%s', '%s', '%s')"
+  let addrs = match addrs with
+    | [] -> ""
+    | addrs ->
+      List.map ~f:(fun x ->
+          sprintf "%Ld" @@
+          Or_error.ok_exn @@ Word.to_int64 x) addrs |>
+      String.concat ~sep:" " in
+  sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s')"
       id
       (str_of_bytes bytes)
       (str_of_insn ~f:Insn.name insn)
       (str_of_insn ~f:Insn.asm insn)
       (str_of_insn ~f:get_bil insn)
+      addrs
 
 let make_dyn db task_id insn_id result =
   let add kind s =
@@ -239,10 +255,11 @@ let make_dyn db task_id insn_id result =
     add `Unknown_sema in
   Set.fold ~init:([],[],[],insn_id)
     ~f:(fun (data, insns, ids, insn_id) bytes ->
-      let insn = Q.find_insn result bytes in
-      let d = make_dyn_data task_id insn_id bytes result in
-      let i = make_insn db insn_id bytes insn in
-      d :: data, i :: insns, insn_id::ids, Int64.succ insn_id) all
+        let insn = Q.find_insn result bytes in
+        let addrs = Q.find_addrs result bytes in
+        let d = make_dyn_data task_id insn_id bytes result in
+        let i = make_insn db insn_id bytes insn addrs in
+        d :: data, i :: insns, insn_id::ids, Int64.succ insn_id) all
 
 let add_task_insns db task_id ids =
   let data =
@@ -270,6 +287,7 @@ let open_db name =
   add task_insn_tab >>= fun () ->
   add insn_tab >>= fun () ->
   add dyn_data_tab >>= fun () ->
+  add bin_info_tab >>= fun () ->
   Ok db
 
 let close_db db =
@@ -321,22 +339,44 @@ let mem_to_str mem =
   Seq.map ~f:(fun w -> sprintf "%02X" @@ to_int w) (deref mem) |>
   Seq.to_list |> String.concat ~sep:" "
 
+let deref mem =
+  Seq.unfold_step ~init:(Memory.min_addr mem)
+    ~f:(fun addr ->
+        match Memory.get ~addr mem with
+        | Ok word -> Seq.Step.Yield (word, Word.succ addr)
+        | Error _ -> Seq.Step.Done)
+
+let add_bin_info db task_id ranges =
+  let to_int64 x = Or_error.ok_exn @@ Word.to_int64 x in
+  let data,_ = List.fold ~init:([], Int64.zero)
+      ~f:(fun (data, id) (min,max) ->
+          let id = Int64.succ id in
+          let s = sprintf "('%Ld', '%Ld', '%Ld', '%Ld')"
+              task_id id (to_int64 min) (to_int64 max) in
+          s :: data, id) ranges in
+  Tab.insert db bin_info_tab data
+
 let add_insns db task_id insns =
   get_insn_id db >>= fun insn_id ->
   let insns =
     Seq.fold ~init:Insn.Map.empty
-      ~f:(fun s (m,i) -> Map.add s ~key:i ~data:m) insns in
+      ~f:(fun s (m,i) -> Map.change s i
+             ~f:(function
+                 | None -> Some [Memory.min_addr m]
+                 | Some addrs -> Some (Memory.min_addr m :: addrs)))
+      insns in
   let insns,ids,_ =
     Map.fold ~init:([],[],insn_id)
       ~f:(fun ~key ~data (insns, ids, id)  ->
-          let bytes = mem_to_str data in
+          let bytes = ""  in
+          let addrs = data in
           let next = Int64.succ id in
-          make_insn db id bytes (Some key) :: insns, id :: ids, next)
+          make_insn db id bytes (Some key) addrs :: insns, id :: ids, next)
       insns in
   Tab.insert db insn_tab insns >>= fun () ->
   add_task_insns db task_id ids
 
-let update_with_static ?compiler_ops ?extra ~name arch insns db =
+let update_with_static ?compiler_ops ?extra ~name arch mems insns db =
   let comp_ops = concat_ops compiler_ops in
   let extra = with_default ~def:"" extra in
   let arch = Arch.to_string arch in
@@ -344,5 +384,6 @@ let update_with_static ?compiler_ops ?extra ~name arch insns db =
   let r =
     add_task db name >>= fun task_id ->
     add_info db task_id Static ~name ~arch ~comp_ops ~extra >>= fun () ->
-    add_insns db task_id insns in
+    add_insns db task_id insns >>= fun () ->
+    add_bin_info db task_id mems in
   with_close db r

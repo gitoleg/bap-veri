@@ -6,18 +6,26 @@ module R = Veri_result
 type info = {
   indx : Int.Set.t;
   insn : Insn.t option;
+  addrs : Addr.Set.t;
 } [@@deriving bin_io, compare, sexp]
 
 type map = info String.Map.t [@@deriving bin_io, compare, sexp]
 
-let add_map map bytes index insn =
+let add_addr map = function
+  | None -> map
+  | Some addr -> Addr.Set.add map addr
+
+let add_map map bytes index addr insn =
   let add_index indexes = match index with
     | None -> indexes
     | Some ind -> Set.add indexes ind in
   Map.change map bytes ~f:(function
-      | None -> Some {insn; indx = add_index Int.Set.empty }
+      | None ->
+        let addrs = add_addr Addr.Set.empty addr in
+        Some {insn; addrs; indx = add_index Int.Set.empty }
       | Some info ->
-        Some {info with indx = add_index info.indx})
+        let addrs = add_addr info.addrs addr in
+        Some {info with addrs; indx = add_index info.indx})
 
 module Collector = struct
   type t = map [@@deriving bin_io, compare, sexp]
@@ -39,12 +47,13 @@ end
 let empty = String.Map.empty
 let find_bytes d = Dict.find d R.bytes
 let find_insn d = Dict.find d R.insn
+let find_addr d = Dict.find d R.addr
 
 let add dict index map =
   match find_bytes dict with
   | None -> map
   | Some bytes ->
-    add_map map bytes (Some index) (find_insn dict)
+    add_map map bytes (Some index) (find_addr dict) (find_insn dict)
 
 let sucs = Value.Tag.register ~name:"successful case"
     ~uuid:"fa5f178c-4da1-4b0f-b061-e2e8f5d97e57"
@@ -166,7 +175,21 @@ let find_indexes t ?query bytes =
     Set.to_list @@
     List.fold ~init:sucs ~f:(fun acc s -> Set.union acc s) s
 
-
+let find_addrs t ?query bytes =
+  let f m =
+    Option.value_map ~default:Addr.Set.empty
+      (Map.find m bytes)
+      ~f:(fun x -> x.addrs) in
+  match query with
+  | Some q -> Set.to_list @@ apply t f q
+  | None ->
+    let sucs = apply t f `Success in
+    let s =
+      [ apply t f `Unsound_sema;
+        apply t f `Unknown_sema;
+        apply t f `Disasm_error;] in
+    Set.to_list @@
+    List.fold ~init:sucs ~f:(fun acc s -> Set.union acc s) s
 
 let t_of_values values =
   let open Or_error in
