@@ -138,8 +138,25 @@ module Command = struct
     ] in
     Term.info "veri-task" ~doc ~man
 
+  let filter_argv argv =
+    let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
+    let known_plugins =  Plugins.list () |> List.map ~f:Plugin.name in
+    let known_names = known_passes @ known_plugins in
+    let prefixes = List.map known_names  ~f:(fun name -> "--" ^ name) in
+    let is_prefix str prefix = String.is_prefix ~prefix str in
+    let is_others opt =
+      is_prefix opt "--" && List.exists ~f:(fun p -> is_prefix opt p) prefixes in
+    List.fold ~init:([], false) ~f:(fun (acc, drop) opt ->
+        if drop then acc, false
+        else
+        if is_others opt then acc, not (String.mem opt '=')
+        else opt :: acc, false) (Array.to_list argv) |>
+    fst |> List.rev |> Array.of_list
+
+
   let run =
-    match Term.eval (run_t, info) ~catch:false with
+    let argv = filter_argv Sys.argv in
+    match Term.eval ~argv (run_t, info) ~catch:false with
     | `Ok opts -> opts
     | `Error `Parse -> exit 64
     | `Error _ -> exit 2
