@@ -29,10 +29,7 @@ def calc(c, arch):
         task_id = long(task[0])
         task_name = task[1]
         stats = extract_stat(c, task_id)
-        suc = 0
-        und = 0
-        uns = 0
-        unk = 0
+        suc,und,uns,unk = 0,0,0,0
         for data in stats:
             suc += int(data[3])
             und += int(data[4])
@@ -51,6 +48,8 @@ def draw(db, arch):
     names = map((lambda x: x[0]), res)
     sucs = map((lambda x: float(x[1]) / x[3]), res)
     x = range(len(names))
+    fig = plt.figure(0)
+    fig.canvas.set_window_title('')
     plt.xticks(x, names)
     plt.xticks(rotation=70)
     plt.ylim([0.8, 1.0])
