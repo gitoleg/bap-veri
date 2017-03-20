@@ -22,131 +22,6 @@ module Veri_options = struct
   } [@@deriving fields]
 end
 
-let pp_code fmt s =
-  let pp fmt s =
-    String.iter ~f:(fun c -> Format.fprintf fmt "%X " (Char.to_int c)) s in
-  Format.fprintf fmt "@[<h>%a@]" pp s
-
-let pp_evs fmt evs =
-  List.iter ~f:(fun ev ->
-      Format.(fprintf std_formatter "%a; " Value.pp ev)) evs
-
-let pp_data (rule, matched) =
-  let open Veri_policy in
-  Format.printf "%a\n%a" Veri_rule.pp rule Matched.pp matched
-
-let print_report result _ () =
-  let module R = Veri_result in
-  let get tag = Dict.find result.R.dict tag in
-  let open Option in
-  let _ =
-    get R.diff >>= fun diff ->
-    get R.insn >>= fun insn ->
-    get R.real >>= fun real ->
-    get R.ours >>= fun ours ->
-    get R.bytes >>= fun code ->
-    let bil = Insn.bil insn in
-    let insn = Insn.name insn in
-    Format.printf "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."
-      insn pp_code code pp_evs real pp_evs ours Bil.pp bil;
-    List.iter ~f:pp_data diff;
-    Format.print_newline ();
-    None in
-  Format.print_flush ()
-
-let report = Value.Tag.register ~name:"report"
-    ~uuid:"5786e900-cc73-4546-90cd-6ec97c20fd4f"
-    (module Unit)
-
-let report_case = Veri_info.Test_case.custom print_report ~init:() report
-
-module Stat = struct
-  module Q = Veri_numbers
-
-  let print_table fmt info data =
-    let open Textutils.Std in
-    let open Ascii_table in
-    let cols =
-      List.fold ~f:(fun acc (name, f) ->
-          (Column.create name f)::acc) ~init:[] info |> List.rev in
-    Format.fprintf fmt "%s"
-      (to_string ~bars:`Ascii ~display:Display.short_box cols data)
-
-  let pp_summary fmt stats =
-    let get kind = List.fold ~init:0
-        ~f:(fun x s -> x + Q.number s kind) stats in
-    let n = get `Total_number in
-    if n = 0 then Format.fprintf fmt "summary is unavailable\n"
-    else
-      let pcnt x y = float x /. float y *. 100.0 in
-      let make name kind =
-        let x = get kind in name, pcnt x n, x in
-      let ps =
-        [make "undisasmed" `Disasm_error;
-         make "unsound semabtic" `Unsound_sema;
-         make "unknown semantic" `Unknown_sema;
-         make "successful" `Success] in
-      print_table fmt
-        ["",    (fun (x,_,_) -> x);
-         "rel", (fun (_,x,_) -> Printf.sprintf "%.2f%%" x);
-         "abs", (fun (_,_,x) -> Printf.sprintf "%d" x);] ps
-
-  let pp_unsound fmt stats =
-    Format.fprintf fmt "instructions with unsound semantic \n";
-    let unite_by_name insns =
-      Map.to_alist @@
-      List.fold ~f:(fun s (insn,num) ->
-          Map.change s (Insn.name insn) ~f:(function
-              | None -> Some num
-              | Some x -> Some (x + num))) ~init:String.Map.empty insns in
-    let fold f = List.fold ~f:(fun xs s -> f s @ xs) ~init:[] stats in
-    let unsound s = unite_by_name @@ Q.insnsi s `Unsound_sema in
-    let success s = unite_by_name @@ Q.insnsi s `Success in
-    let unsound = fold unsound in
-    let success = fold success in
-    let ok_num name =
-      match List.find ~f:(fun (n,_) -> n = name) success with
-      | None -> 0
-      | Some (_,num) -> num in
-    let r = List.map ~f:(fun (name,cnt) ->
-        (name, cnt, ok_num name)) unsound in
-    print_table fmt
-      [ "instruction", (fun (name, _,_) -> Printf.sprintf "%s" name);
-        "failed", (fun (_,er,_) -> Printf.sprintf "%d" er);
-        "successful", (fun (_,_,ok) -> Printf.sprintf "%d" ok); ]
-      r
-
-  let pp_unknown fmt stats =
-    let max_row_len = 10 in
-    let max_col_cnt = 5 in
-    let si = List.fold ~init:Insn.Set.empty stats
-        ~f:(fun s stat ->
-            List.fold ~f:Set.add ~init:s (Q.insns stat `Unknown_sema)) in
-    let names = List.map ~f:Insn.name @@ Set.to_list si  in
-    match names with
-    | [] -> ()
-    | names when List.length names <= max_row_len ->
-      let names' = "unknown:" :: names in
-      List.iter ~f:(Format.fprintf fmt "%s ") names';
-      Format.print_newline ()
-    | names ->
-      let rows, row, _ = List.fold ~init:([], [], 0)
-          ~f:(fun (acc, row, i) name ->
-              if i < max_col_cnt then acc, name :: row, i + 1
-              else row :: acc, name :: [], 1) names in
-      let gaps = Array.create ~len:(max_col_cnt - List.length row) "-----" in
-      let last = row @ Array.to_list gaps in
-      let rows = List.rev (last :: rows) in
-      let make_col i = "unknown", (fun row -> List.nth_exn row i) in
-      let cols = [
-        make_col 0; make_col 1; make_col 2; make_col 3; make_col 4; ] in
-      print_table fmt cols rows
-
-  let pp fmt stats =
-    Format.fprintf fmt "%a\n%a\n" pp_unsound stats pp_unknown stats
-
-end
-
 module type Opts = sig
   val options : Veri_options.t
 end
@@ -154,6 +29,8 @@ end
 module Program (O : Opts) = struct
   open Veri_options
   open O
+
+  module Dis = Disasm_expert.Basic
 
   let string_of_error = function
     | `Protocol_error er ->
@@ -170,7 +47,13 @@ module Program (O : Opts) = struct
       Veri_rule.Reader.of_path file |>
       List.fold ~f:Veri_policy.add ~init:Veri_policy.empty
 
+  let arch_of_trace trace =
+    match Dict.find (Trace.meta trace) Meta.arch with
+    | None -> Or_error.error_string "trace of unknown arch"
+    | Some arch -> Ok arch
+
   let eval_file file policy =
+    let open Or_error in
     let mk_er s = Error (Error.of_string s) in
     let uri = Uri.of_string ("file:" ^ file) in
     match Trace.load uri with
@@ -178,11 +61,18 @@ module Program (O : Opts) = struct
       Printf.sprintf "error during loading trace: %s\n" (string_of_error er) |>
       mk_er
     | Ok trace ->
-      let cases = Veri_numbers.cases in
-      let cases = if options.show_errs then
-          Array.append cases[| report_case |]
-        else cases in
-      Veri_info.Test_case.eval trace policy cases
+      arch_of_trace trace >>= fun arch ->
+      let fin,p = Future.create () in
+      let ctxt = new Veri.context policy trace in
+      let info = ctxt#info in
+      let start () =
+        Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
+            let dis = Dis.store_asm dis |> Dis.store_kinds in
+            let veri = new Veri.t arch dis in
+            let _ = Monad.State.exec (veri#eval_trace trace) ctxt in
+            Ok (Promise.fulfill p ())) in
+      Ok (start, info, fin)
+
 
   let read_dir path =
     let dir = Unix.opendir path in
@@ -207,25 +97,26 @@ module Program (O : Opts) = struct
       if Sys.is_directory options.path then (read_dir options.path)
       else [options.path] in
     let policy = make_policy options.rules in
-    let eval stats file =
+    let fmt = Format.std_formatter in
+    let add_sum, print_sum = Veri_print.print_summary fmt in
+    let add_stat, print_stat = Veri_print.print_stat fmt in
+    let add_out = Option.value_map options.out
+        ~default:None ~f:(fun x -> Some (Veri_out.output x)) in
+    let make file =
       Format.(fprintf std_formatter "%s@." file);
-      Or_error.(
-        eval_file file policy >>= fun num ->
-        Veri_numbers.t_of_values num) |> function
+      match eval_file file policy with
       | Error er ->
-        Error.to_string_hum er |>
-        Printf.eprintf "error in verification: %s";
-        stats
-      | Ok stat' ->
-        (Filename.basename file, stat') :: stats in
-    let named_stats = List.fold ~init:[] ~f:eval files in
-    let stats = List.map ~f:snd named_stats in
-    if options.show_stat then
-      Format.printf "%a\n" Stat.pp stats;
-    Format.(printf "%a\n" Stat.pp_summary stats);
-    match options.out with
-    | None -> ()
-    | Some out -> Veri_out.output named_stats out
+        eprintf "error in verification: %s" (Error.to_string_hum er)
+      | Ok (start, infos, fin) ->
+        if options.show_errs then Veri_print.print_report fmt infos;
+        add_sum infos;
+        add_stat infos;
+        Option.value_map ~default:() ~f:(fun f -> f file infos fin) add_out;
+        ignore(start ()) in
+    List.iter ~f:make files ;
+    if options.show_stat then print_stat ();
+    print_sum ()
+
 
 end
 

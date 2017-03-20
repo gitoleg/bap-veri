@@ -1,40 +1,32 @@
 open Core_kernel.Std
-open Textutils.Std
-open Text_block
+open Bap_future.Std
 
-module Q = Veri_numbers
+let header = "#, file, total, succeded %, unsound %, undisasmed %, unknown %\n"
 
-let make_iota max =
-  let rec make acc n =
-    if n < 0 then acc
-    else make (n :: acc) (n - 1) in
-  make [] (max - 1)
-
-let make_col title to_string vals =
-  vcat ~align:`Center (text title :: List.map ~f:(fun x -> text (to_string x)) vals)
-
-let texts_col title vals = make_col title ident vals
-let intgr_col title vals = make_col title (Printf.sprintf "%d") vals
-let float_col title vals = make_col title (Printf.sprintf "%.2f") vals
-
-let total q = Q.number q `Total_number
-
-let relat q kind =
-  float (Q.number q kind) /. float (total q)
-
-let output stats path =
-  let of_stats f = List.map ~f:(fun x -> f (snd x)) stats in
-  let out = Out_channel.create path in
-  let cnter = intgr_col "#" (make_iota (List.length stats)) in
-  let names = texts_col "file" (List.map ~f:fst stats) in
-  let total = intgr_col "total" (of_stats @@ total) in
-  let relat kind s = relat s kind in
-  let prcnt = List.map
-      ~f:(fun (name, f) -> float_col name (of_stats f))
-             [ "successful, %",   relat `Success;
-               "unsound, %", relat `Unsound_sema;
-               "undisas, %",  relat `Disasm_error;
-               "unknown, %",   relat `Unknown_sema; ] in
-  let tab = hcat ~sep:(text "  |  ") ([cnter; names; total] @ prcnt) in
-  Out_channel.output_string out (render tab);
-  Out_channel.close out
+let output path =
+  let files = ref 0 in
+  let add name infos finish =
+    incr files;
+    let und = ref 0 in
+    let uns = ref 0 in
+    let unk = ref 0 in
+    let suc = ref 0 in
+    let of_info info = match Veri.Info.error info with
+      | None -> incr suc
+      | Some (kind,_) ->
+         match kind with
+         | `Unknown_sema -> incr unk
+         | `Unsound_sema -> incr uns
+         | `Disasm_error -> incr und in
+    let print () =
+      let out = Out_channel.create ~append:true path in
+      let tot = !suc + !unk + !und + !uns in
+      let rel x = float !x /. float tot *. 100.0 in
+      let hd = if !files = 0 then header else "" in
+      let s = sprintf "%s%d  %s  %d %.2f %.2f %.2f %.2f\n"
+                      hd !files name tot (rel suc) (rel uns) (rel und) (rel unk) in
+      Out_channel.output_string out s;
+      Out_channel.close out in
+    Stream.observe infos of_info;
+    Future.upon finish print in
+  add

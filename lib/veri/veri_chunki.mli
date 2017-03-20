@@ -11,7 +11,7 @@ end
 
 type 'a u = 'a Bil.Result.u
 
-type error = Veri_result.error_kind * Error.t
+type error = Veri_result.error
 
 class context: Trace.t -> object('s)
     inherit Veri_traci.context

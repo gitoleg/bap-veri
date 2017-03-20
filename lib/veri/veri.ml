@@ -38,30 +38,72 @@ let value = Bil.Result.value
 
 module Events = Value.Set
 
-type result = Veri_result.t
+type diff = Veri_policy.result list
+[@@deriving bin_io, compare, sexp]
 
-let update_dict dict tag x = match Dict.add dict tag x with
-  | `Ok dict -> dict
-  | `Duplicate -> dict
+module Diff = struct
+  type t = diff [@@deriving bin_io, compare, sexp]
+  let ppr fmt (r, m) =
+    Format.fprintf fmt "%a:%a\n" Veri_rule.pp r
+      Veri_policy.Matched.pp m
+  let pp fmt rs = List.iter ~f:(ppr fmt) rs
+end
 
-let make_result kind dict =
-  let kind = (kind :> Veri_result.kind) in
-  Veri_result.{kind; dict}
+let bytes = Value.Tag.register ~name:"bytes"
+    ~uuid:"26e4bf85-5b1c-4bf9-98ab-32428c9e66e7"
+    (module String)
 
-let add_unsound dict name results =
+let error = Value.Tag.register ~name:"error"
+    ~uuid:"802dc20b-9a98-4998-9a57-48ab9ff291bb"
+    (module Veri_result.Error)
+
+let insn = Value.Tag.register ~name:"instruction"
+    ~uuid:"fd176d5c-9402-4d6d-849a-50a09c44b13b"
+    (module Insn)
+
+let index = Value.Tag.register ~name:"index"
+    ~uuid:"a814a3cc-797d-403b-9457-b15b9fdf8bf0"
+    (module Int)
+
+let diff = Value.Tag.register ~name:"diff"
+    ~uuid:"dc14589f-2fe5-40e9-8a47-b0961d96b827"
+    (module Diff)
+
+let addr = Value.Tag.register ~name:"insn address"
+    ~uuid:"b77f07ab-9eeb-45ce-b7c5-2efb310b030d"
+    (module Addr)
+
+module Info = struct
+  type t = {
+    real : event list;
+    ours : event list;
+    veri : event list;
+  }
+
+  let create real ours veri = {real; ours; veri}
+  let get t tag = List.find_map ~f:(Value.get tag) t.veri
+  let get_exn t tag = Option.value_exn (List.find_map ~f:(Value.get tag) t.veri)
+  let addr t = get_exn t addr
+  let insn t = get t insn
+  let real t = t.real
+  let ours t = t.ours
+  let diff t = Option.value_map ~default:[] ~f:ident (get t diff)
+  let index t = get_exn t index
+  let bytes t = get_exn t bytes
+  let error t = get t error
+end
+
+let add_event tag v evs = Value.create tag v :: evs
+
+let add_unsound evs name diff_res =
   let er = Error.of_string @@ sprintf "%s: unsound semantic" name in
-  let dict = update_dict dict Veri_result.error er in
-  update_dict dict Veri_result.diff results
+  add_event error (`Unsound_sema, er) evs |>
+  add_event diff diff_res
 
-let add_events dict real ours =
-  let dict = update_dict dict Veri_result.real (Set.to_list real) in
-  update_dict dict Veri_result.ours (Set.to_list ours)
-
-let add_insn dict bil = function
-  | None -> dict
-  | Some insn ->
-    update_dict dict Veri_result.insn
-      (Insn.of_basic ~bil insn)
+let add_insn evs bil = function
+  | None -> evs
+  | Some x ->
+    add_event insn (Insn.of_basic ~bil x) evs
 
 class context policy trace = object(self:'s)
   inherit Veri_chunki.context trace as super
@@ -69,40 +111,32 @@ class context policy trace = object(self:'s)
   val events = Events.empty
   val other : 's option = None
   val code : Chunk.t option = None
-  val dict : dict = Dict.empty
+  val info_stream = Stream.create ()
+  val veri_events : value list = []
 
   method cleanup =
-    let s = {< other = None; dict = Dict.empty;
+    let s = {< other = None; veri_events = [];
                events = Events.empty;  code = None; >} in
     s#drop_pc
 
-  method update_result (r : result) = self
-  method with_dict dict : 's = {< dict = dict >}
-
   method merge =
-    let dict = add_insn dict self#bil self#insn in
-    match self#error with
-    | Some (kind, er) ->
-      let self = self#with_dict @@
-        update_dict dict Veri_result.error er in
-      let self = self#update_result @@ make_result kind self#dict in
-      self#cleanup
-    | None -> match self#insn with
-      | None -> self#cleanup
-      | Some insn ->
-        let name = Dis.Insn.name insn in
-        let other = Option.value_exn self#other in
-        let events, events' = other#events, self#events in
-        let dict = add_events dict events events' in
-        match Veri_policy.denied policy name events events' with
-        | [] ->
-          let self = self#with_dict dict in
-          let self = self#update_result @@ make_result `Success dict in
-          self#cleanup
-        | results ->
-          let self = self#with_dict (add_unsound dict name results) in
-          let self = self#update_result @@ make_result `Unsound_sema self#dict in
-          self#cleanup
+    let other = Option.value_exn self#other in
+    let veri_events = add_insn veri_events self#bil self#insn in
+    let real = other#events in
+    let ours = self#events in
+    let veri = match self#error with
+      | Some er ->
+        Value.create error er :: veri_events
+      | None -> match self#insn with
+        | None -> veri_events
+        | Some insn ->
+          let name = Dis.Insn.name insn in
+          match Veri_policy.denied policy name real ours with
+          | [] -> veri_events
+          | diff -> add_unsound veri_events name diff in
+    let i = Info.create (Set.to_list real) (Set.to_list ours) veri in
+    Signal.send (snd info_stream) i;
+    self#cleanup
 
   method discard_event: (event -> bool) -> 's = fun f ->
     match Set.find events ~f with
@@ -113,7 +147,7 @@ class context policy trace = object(self:'s)
     let s = {< other = Some self; events = Events.empty; >} in
     s#drop_pc
 
-  method dict  = dict
+  method info = fst info_stream
   method code  = code
   method other = other
   method events  = events
@@ -122,9 +156,9 @@ class context policy trace = object(self:'s)
   method switch  = (Option.value_exn other)#save self
   method drop_pc = self#with_pc Bil.Bot
   method set_code c =
-    let dict = update_dict dict Veri_result.addr  (Chunk.addr c) in
-    let dict = update_dict dict Veri_result.bytes (Chunk.data c) in
-    {< code = Some c; dict = dict; >}
+    let evs = add_event addr (Chunk.addr c) veri_events |>
+              add_event bytes (Chunk.data c) in
+    {< code = Some c; veri_events = evs; >}
 
 end
 

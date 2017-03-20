@@ -3,6 +3,22 @@ open Bap.Std
 open Bap_traces.Std
 open Bap_future.Std
 
+
+type event = Trace.event
+
+module Info : sig
+  type t
+
+  val addr : t -> addr
+  val insn : t -> Insn.t option
+  val real : t -> event list
+  val ours : t -> event list
+  val diff : t -> Veri_policy.result list
+  val index : t -> int
+  val bytes : t -> string
+  val error : t -> Veri_result.error option
+end
+
 class context: Veri_policy.t -> Trace.t -> object('s)
     inherit Veri_chunki.context
     method split  : 's
@@ -12,14 +28,12 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     method code   : Chunk.t option
     method switch : 's
     method events : Value.Set.t
-    method register_event : Trace.event -> 's
-    method discard_event  : (Trace.event -> bool) -> 's
-    method update_result  : Veri_result.t -> 's
+    method register_event : event -> 's
+    method discard_event  : (event -> bool) -> 's
     method drop_pc  : 's
     method set_code : Chunk.t -> 's
-    method cleanup : 's
-    method dict : dict
-    method with_dict : dict -> 's
+    method cleanup  : 's
+    method info     : Info.t stream
   end
 
 class ['a] t : arch -> Veri_chunki.Disasm.t -> object('s)
