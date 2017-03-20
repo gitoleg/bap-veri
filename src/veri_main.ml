@@ -92,30 +92,45 @@ module Program (O : Opts) = struct
     Unix.closedir dir;
     files
 
+  (* let main () = *)
+  (*   let files = *)
+  (*     if Sys.is_directory options.path then (read_dir options.path) *)
+  (*     else [options.path] in *)
+  (*   let policy = make_policy options.rules in *)
+  (*   let fmt = Format.std_formatter in *)
+  (*   let add_sum, print_sum = Veri_print.print_summary fmt in *)
+  (*   let add_stat, print_stat = Veri_print.print_stat fmt in *)
+  (*   let add_out = Option.value_map options.out *)
+  (*       ~default:None ~f:(fun x -> Some (Veri_out.output x)) in *)
+  (*   let make file = *)
+  (*     Format.(fprintf std_formatter "%s@." file); *)
+  (*     match eval_file file policy with *)
+  (*     | Error er -> *)
+  (*       eprintf "error in verification: %s" (Error.to_string_hum er) *)
+  (*     | Ok (start, infos, fin) -> *)
+  (*       if options.show_errs then Veri_print.print_report fmt infos; *)
+  (*       add_sum infos; *)
+  (*       add_stat infos; *)
+  (*       Option.value_map ~default:() ~f:(fun f -> f file infos fin) add_out; *)
+  (*       ignore(start ()) in *)
+  (*   List.iter ~f:make files ; *)
+  (*   if options.show_stat then print_stat (); *)
+  (*   print_sum () *)
+
   let main () =
     let files =
       if Sys.is_directory options.path then (read_dir options.path)
       else [options.path] in
     let policy = make_policy options.rules in
-    let fmt = Format.std_formatter in
-    let add_sum, print_sum = Veri_print.print_summary fmt in
-    let add_stat, print_stat = Veri_print.print_stat fmt in
-    let add_out = Option.value_map options.out
-        ~default:None ~f:(fun x -> Some (Veri_out.output x)) in
     let make file =
       Format.(fprintf std_formatter "%s@." file);
       match eval_file file policy with
       | Error er ->
         eprintf "error in verification: %s" (Error.to_string_hum er)
       | Ok (start, infos, fin) ->
-        if options.show_errs then Veri_print.print_report fmt infos;
-        add_sum infos;
-        add_stat infos;
-        Option.value_map ~default:() ~f:(fun f -> f file infos fin) add_out;
+        Veri_backend.call file infos fin;
         ignore(start ()) in
-    List.iter ~f:make files ;
-    if options.show_stat then print_stat ();
-    print_sum ()
+    List.iter ~f:make files
 
 
 end
