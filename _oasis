@@ -17,8 +17,6 @@ Library veri
   Modules:        Veri,
                   Veri_chunki,
                   Veri_result,
-                  Veri_info,
-                  Veri_numbers,
                   Veri_policy,
                   Veri_rule,
                   Veri_traci
@@ -28,25 +26,25 @@ Library veri
   ByteOpt:        -pp 'ppx-jane -dump-ast'
   BuildDepends:   pcre, textutils, threads
 
-Library veri_db
-  Path:           lib/veri_db
-  FindLibName:    bap-veri-db
-  Modules:        Veri_db
-  Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   bap-veri, sqlite3
+# Library veri_db
+#   Path:           lib/veri_db
+#   FindLibName:    bap-veri-db
+#   Modules:        Veri_db
+#   Install:        true
+#   NativeOpt:      -pp 'ppx-jane -dump-ast'
+#   ByteOpt:        -pp 'ppx-jane -dump-ast'
+#   BuildDepends:   bap-veri, sqlite3
 
-Library veri_test
-  Path:           tests
-  Build$:         flag(tests)
-  Install:        false
-  CompiledObject: best
-  Modules:        Veri_test,
-                  Veri_policy_test,
-                  Veri_rule_test,
-                  Veri_stat_test
-  BuildDepends:   bap-veri, oUnit
+# Library veri_test
+#   Path:           tests
+#   Build$:         flag(tests)
+#   Install:        false
+#   CompiledObject: best
+#   Modules:        Veri_test,
+#                   Veri_policy_test,
+#                   Veri_rule_test,
+#                   Veri_stat_test
+#   BuildDepends:   bap-veri, oUnit
 
 Executable "bap-veri"
   Path:           src
@@ -57,24 +55,24 @@ Executable "bap-veri"
   ByteOpt:        -pp 'ppx-jane -dump-ast'
   BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner
 
-Executable run_tests
-  Path:           tests
-  MainIs:         run_tests.ml
-  Install:        false
-  Build$:         flag(tests)
-  CompiledObject: best
-  BuildDepends:   bap.plugins, veri_test, oUnit, findlib.dynload
+# Executable run_tests
+#   Path:           tests
+#   MainIs:         run_tests.ml
+#   Install:        false
+#   Build$:         flag(tests)
+#   CompiledObject: best
+#   BuildDepends:   bap.plugins, veri_test, oUnit, findlib.dynload
 
-Test veri_test
-  TestTools:      run_tests
-  Run$:           flag(tests)
-  Command:        $run_tests -runner sequential
+# Test veri_test
+#   TestTools:      run_tests
+#   Run$:           flag(tests)
+#   Command:        $run_tests -runner sequential
 
-Executable "veri-task"
-  Path:           src
-  MainIs:         veri_task.ml
-  CompiledObject: best
-  Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, bap-veri-db, cmdliner
+# Executable "veri-task"
+#   Path:           src
+#   MainIs:         veri_task.ml
+#   CompiledObject: best
+#   Install:        true
+#   NativeOpt:      -pp 'ppx-jane -dump-ast'
+#   ByteOpt:        -pp 'ppx-jane -dump-ast'
+#   BuildDepends:   findlib.dynload, bap.plugins, bap-veri, bap-veri-db, cmdliner
