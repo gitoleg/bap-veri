@@ -33,7 +33,7 @@ class context: Veri_policy.t -> Trace.t -> object('s)
     method drop_pc  : 's
     method set_code : Chunk.t -> 's
     method cleanup  : 's
-    method info     : Info.t stream
+    method info     : Info.t stream * unit Future.t
   end
 
 class ['a] t : arch -> Veri_chunki.Disasm.t -> object('s)

@@ -105,62 +105,70 @@ let add_insn evs bil = function
   | Some x ->
     add_event insn (Insn.of_basic ~bil x) evs
 
-class context policy trace = object(self:'s)
-  inherit Veri_chunki.context trace as super
+class context policy trace =
+  let info_stream = Stream.create () in
+  let finish, promise = Future.create () in
 
-  val events = Events.empty
-  val other : 's option = None
-  val code : Chunk.t option = None
-  val info_stream = Stream.create ()
-  val veri_events : value list = []
+  object(self:'s)
+    inherit Veri_chunki.context trace as super
 
-  method cleanup =
-    let s = {< other = None; veri_events = [];
-               events = Events.empty;  code = None; >} in
-    s#drop_pc
+    val events = Events.empty
+    val other : 's option = None
+    val code : Chunk.t option = None
+    val veri_events : value list = []
 
-  method merge =
-    let other = Option.value_exn self#other in
-    let veri_events = add_insn veri_events self#bil self#insn in
-    let real = other#events in
-    let ours = self#events in
-    let veri = match self#error with
-      | Some er ->
-        Value.create error er :: veri_events
-      | None -> match self#insn with
-        | None -> veri_events
-        | Some insn ->
-          let name = Dis.Insn.name insn in
-          match Veri_policy.denied policy name real ours with
-          | [] -> veri_events
-          | diff -> add_unsound veri_events name diff in
-    let i = Info.create (Set.to_list real) (Set.to_list ours) veri in
-    Signal.send (snd info_stream) i;
-    self#cleanup
+    method! next_event =
+      let next = super#next_event in
+      if next = None then Promise.fulfill promise ();
+      next
 
-  method discard_event: (event -> bool) -> 's = fun f ->
-    match Set.find events ~f with
-    | None -> self
-    | Some ev -> {< events = Set.remove events ev >}
+    method cleanup =
+      let s = {< other = None; veri_events = [];
+                 events = Events.empty;  code = None; >} in
+      s#drop_pc
 
-  method split =
-    let s = {< other = Some self; events = Events.empty; >} in
-    s#drop_pc
+    method merge =
+      let other = Option.value_exn self#other in
+      let veri_events = add_insn veri_events self#bil self#insn in
+      let real = other#events in
+      let ours = self#events in
+      let veri = match self#error with
+        | Some er ->
+          Value.create error er :: veri_events
+        | None -> match self#insn with
+          | None -> veri_events
+          | Some insn ->
+            let name = Dis.Insn.name insn in
+            match Veri_policy.denied policy name real ours with
+            | [] -> veri_events
+            | diff -> add_unsound veri_events name diff in
+      let i = Info.create (Set.to_list real) (Set.to_list ours) veri in
+      Signal.send (snd info_stream) i;
+      self#cleanup
 
-  method info = fst info_stream
-  method code  = code
-  method other = other
-  method events  = events
-  method register_event ev = {< events = Set.add events ev; >}
-  method save s  = {< other = Some s >}
-  method switch  = (Option.value_exn other)#save self
-  method drop_pc = self#with_pc Bil.Bot
-  method set_code c =
-    let evs = add_event addr (Chunk.addr c) veri_events |>
-              add_event bytes (Chunk.data c) in
-    {< code = Some c; veri_events = evs; >}
+    method discard_event: (event -> bool) -> 's = fun f ->
+      match Set.find events ~f with
+      | None -> self
+      | Some ev -> {< events = Set.remove events ev >}
 
-end
+    method split =
+      let s = {< other = Some self; events = Events.empty; >} in
+      s#drop_pc
+
+    method info = fst info_stream, finish
+    method code  = code
+    method other = other
+    method events  = events
+    method register_event ev = {< events = Set.add events ev; >}
+    method save s  = {< other = Some s >}
+    method switch  = (Option.value_exn other)#save self
+    method drop_pc = self#with_pc Bil.Bot
+    method set_code c =
+      let evs = add_event addr (Chunk.addr c) veri_events |>
+                add_event bytes (Chunk.data c) in
+      {< code = Some c; veri_events = evs; >}
+
+  end
 
 let mem_of_arch arch =
   let module Target = (val target_of_arch arch) in

@@ -62,17 +62,14 @@ module Program (O : Opts) = struct
       mk_er
     | Ok trace ->
       arch_of_trace trace >>= fun arch ->
-      let fin,p = Future.create () in
       let ctxt = new Veri.context policy trace in
-      let info = ctxt#info in
-      let start () =
-        Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
-            let dis = Dis.store_asm dis |> Dis.store_kinds in
-            let veri = new Veri.t arch dis in
-            let _ = Monad.State.exec (veri#eval_trace trace) ctxt in
-            Ok (Promise.fulfill p ())) in
-      Ok (start, info, fin)
-
+      let infos, fin = ctxt#info in
+      Veri_backend.call file infos fin;
+      Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
+          let dis = Dis.store_asm dis |> Dis.store_kinds in
+          let veri = new Veri.t arch dis in
+          let _ = Monad.State.exec (veri#eval_trace trace) ctxt in
+          Ok ())
 
   let read_dir path =
     let dir = Unix.opendir path in
@@ -92,46 +89,17 @@ module Program (O : Opts) = struct
     Unix.closedir dir;
     files
 
-  (* let main () = *)
-  (*   let files = *)
-  (*     if Sys.is_directory options.path then (read_dir options.path) *)
-  (*     else [options.path] in *)
-  (*   let policy = make_policy options.rules in *)
-  (*   let fmt = Format.std_formatter in *)
-  (*   let add_sum, print_sum = Veri_print.print_summary fmt in *)
-  (*   let add_stat, print_stat = Veri_print.print_stat fmt in *)
-  (*   let add_out = Option.value_map options.out *)
-  (*       ~default:None ~f:(fun x -> Some (Veri_out.output x)) in *)
-  (*   let make file = *)
-  (*     Format.(fprintf std_formatter "%s@." file); *)
-  (*     match eval_file file policy with *)
-  (*     | Error er -> *)
-  (*       eprintf "error in verification: %s" (Error.to_string_hum er) *)
-  (*     | Ok (start, infos, fin) -> *)
-  (*       if options.show_errs then Veri_print.print_report fmt infos; *)
-  (*       add_sum infos; *)
-  (*       add_stat infos; *)
-  (*       Option.value_map ~default:() ~f:(fun f -> f file infos fin) add_out; *)
-  (*       ignore(start ()) in *)
-  (*   List.iter ~f:make files ; *)
-  (*   if options.show_stat then print_stat (); *)
-  (*   print_sum () *)
-
   let main () =
     let files =
       if Sys.is_directory options.path then (read_dir options.path)
       else [options.path] in
     let policy = make_policy options.rules in
-    let make file =
-      Format.(fprintf std_formatter "%s@." file);
-      match eval_file file policy with
-      | Error er ->
-        eprintf "error in verification: %s" (Error.to_string_hum er)
-      | Ok (start, infos, fin) ->
-        Veri_backend.call file infos fin;
-        ignore(start ()) in
-    List.iter ~f:make files
-
+    List.iter ~f:(fun file ->
+        Format.(fprintf std_formatter "%s@." file);
+        match eval_file file policy with
+        | Error er ->
+          eprintf "error in verification: %s" (Error.to_string_hum er)
+        | Ok () -> ()) files
 
 end
 
