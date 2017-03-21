@@ -33,8 +33,6 @@ open Veri.Std
 module Veri_options = struct
   type t = {
     rules : string option;
-    show_errs : bool;
-    show_stat : bool;
     path  : string;
     out   : string option;
   } [@@deriving fields]
@@ -131,12 +129,6 @@ module Command = struct
 
   let make_flag ~doc ~name = Arg.(value & flag & info [name] ~doc)
 
-  let show_errors =
-    make_flag ~name:"show-errors"
-      ~doc:"Show detailed information about BIL errors"
-
-  let show_stat = make_flag ~name:"show-stat" ~doc:"Show verification statistic"
-
   let info =
     let doc = "Bil verification tool" in
     let man = [
@@ -146,14 +138,14 @@ module Command = struct
     ] in
     Term.info "veri" ~doc ~man
 
-  let create a b c d e = Veri_options.Fields.create a b c d e
+  let create a b c = Veri_options.Fields.create a b c
 
   let run_t =
-    Term.(const create $ rules $ show_errors $ show_stat $ filename $ output)
+    Term.(const create $ rules $ filename $ output)
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
-    let known_plugins =  Plugins.list () |> List.map ~f:Plugin.name in
+    let known_plugins = Plugins.list () |> List.map ~f:Plugin.name in
     let known_names = known_passes @ known_plugins in
     let prefixes = List.map known_names  ~f:(fun name -> "--" ^ name) in
     let is_prefix str prefix = String.is_prefix ~prefix str in

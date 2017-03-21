@@ -50,27 +50,27 @@ module Diff = struct
 end
 
 let bytes = Value.Tag.register ~name:"bytes"
-    ~uuid:"9ad810e6-9770-4505-aba2-940dda12c923"
+    ~uuid:"3e02c0e1-6eab-41af-843c-aaf702a942d6"
     (module String)
 
 let error = Value.Tag.register ~name:"error"
-    ~uuid:"5dc0dbc7-bcdb-4d8d-bda8-48ca9c22b8e2"
+    ~uuid:"9189054d-6e7c-480e-8a92-a211440bc134"
     (module Veri_result.Error)
 
 let insn = Value.Tag.register ~name:"instruction"
-    ~uuid:"8664c689-aaaf-4092-9e4e-6e9b5b27e835"
+    ~uuid:"e0e96dd9-204c-4a5b-bdff-d54de9d2e725"
     (module Insn)
 
 let index = Value.Tag.register ~name:"index"
-    ~uuid:"69a754c0-ed89-4ad1-8656-66a8636a5b65"
+    ~uuid:"e42f59d5-ea60-47b9-98c2-a8de9d2e10b3"
     (module Int)
 
 let diff = Value.Tag.register ~name:"diff"
-    ~uuid:"84991f98-8b07-4bd4-ac5e-b96ee68767cd"
+    ~uuid:"42713daf-7226-4330-9363-9ef8729dcb85"
     (module Diff)
 
 let addr = Value.Tag.register ~name:"insn address"
-    ~uuid:"dd7678db-04a1-4af1-9813-0f95657f978d"
+    ~uuid:"c1bc450a-a435-4181-bcaf-9cbdf222757c"
     (module Addr)
 
 module Info = struct

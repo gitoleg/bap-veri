@@ -5,20 +5,6 @@ open Veri.Std
 
 include Self ()
 
-let () = printf "my name is %s\n" name
-
-(* module R = struct *)
-
-(*   let run fname stream fut = *)
-(*     printf "I am a simple module!\n" *)
-
-(*   let on_exit () = () *)
-
-(* end *)
-
-(* let () = Backend.register "my! test! report!"  (module R) *)
-
-
 module Report = struct
 
   let pp_code fmt s =
@@ -173,6 +159,43 @@ module Stat = struct
 
 end
 
-let () = Backend.register "show-errors"  (module Report)
-let () = Backend.register "show-summary" (module Summary)
-let () = Backend.register "show-stat"    (module Stat)
+let main show_errors show_stat =
+  if show_errors then
+    Backend.register "show-errors" (module Report);
+  if show_stat then
+    Backend.register "show-stat" (module Stat);
+  Backend.register "show-summary" (module Summary)
+
+
+let () = printf "name is %s\n" name
+
+module Cmd = struct
+  open Cmdliner
+
+  let man = [
+    `S "DESCRIPTION";
+    `P "Print information about verification. ";
+  ]
+
+  (* let make_flag ~doc ~name = Arg.(value & flag & info [name] ~doc) *)
+
+  (* let show_errors = *)
+  (*   make_flag ~name:"errors" *)
+  (*     ~doc:"Show detailed information about BIL errors" *)
+
+  (* let show_stat = make_flag ~name:"stat" ~doc: *)
+  (*     "Show verification statistic" *)
+
+  let show_errors =
+    let doc = "Show all registered api" in
+    Config.(flag "errors" ~doc)
+
+  let show_stat =
+    let doc = "Show all registered api" in
+    Config.(flag "stat" ~doc)
+
+   let () =
+     Config.manpage man;
+     Config.when_ready (fun {Config.get=(!)} -> main !show_errors !show_stat)
+
+end

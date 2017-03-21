@@ -28,10 +28,10 @@ Library veri
   ByteOpt:         -pp 'ppx-jane -dump-ast'
   BuildDepends:    pcre
 
-Library print_plugin
-  Path:            plugins/print/
-  FindLibName:     veri-plugin-print
-  InternalModules: Veri_print
+Library show_plugin
+  Path:            plugins/show
+  FindLibName:     veri-plugin-show
+  InternalModules: Show_main
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri, textutils
