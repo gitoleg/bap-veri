@@ -50,27 +50,27 @@ module Diff = struct
 end
 
 let bytes = Value.Tag.register ~name:"bytes"
-    ~uuid:"26e4bf85-5b1c-4bf9-98ab-32428c9e66e7"
+    ~uuid:"61ac6416-92be-4465-a00a-931125f8bfc0"
     (module String)
 
 let error = Value.Tag.register ~name:"error"
-    ~uuid:"802dc20b-9a98-4998-9a57-48ab9ff291bb"
+    ~uuid:"cd8e5658-1c32-40ac-bfc0-dfc1efb436a7"
     (module Veri_result.Error)
 
 let insn = Value.Tag.register ~name:"instruction"
-    ~uuid:"fd176d5c-9402-4d6d-849a-50a09c44b13b"
+    ~uuid:"0b0363d5-9aeb-46d8-8f6d-4fff28c65f66"
     (module Insn)
 
 let index = Value.Tag.register ~name:"index"
-    ~uuid:"a814a3cc-797d-403b-9457-b15b9fdf8bf0"
+    ~uuid:"c55a25f9-8066-4fba-8551-68935f6e04a7"
     (module Int)
 
 let diff = Value.Tag.register ~name:"diff"
-    ~uuid:"dc14589f-2fe5-40e9-8a47-b0961d96b827"
+    ~uuid:"df25c560-fedb-4a49-bbf9-38f7e9bebf7c"
     (module Diff)
 
 let addr = Value.Tag.register ~name:"insn address"
-    ~uuid:"b77f07ab-9eeb-45ce-b7c5-2efb310b030d"
+    ~uuid:"2ea2e192-33f6-4b5a-ae80-241e36911181"
     (module Addr)
 
 module Info = struct
@@ -105,21 +105,19 @@ let add_insn evs bil = function
   | Some x ->
     add_event insn (Insn.of_basic ~bil x) evs
 
-class context policy trace =
-  let info_stream = Stream.create () in
-  let finish, promise = Future.create () in
-
-  object(self:'s)
+class context policy trace = object(self:'s)
     inherit Veri_chunki.context trace as super
 
     val events = Events.empty
     val other : 's option = None
     val code : Chunk.t option = None
     val veri_events : value list = []
+    val info_stream = Stream.create ()
+    val finish = Future.create ()
 
     method! next_event =
       let next = super#next_event in
-      if next = None then Promise.fulfill promise ();
+      if next = None then Promise.fulfill (snd finish) ();
       next
 
     method cleanup =
@@ -155,7 +153,7 @@ class context policy trace =
       let s = {< other = Some self; events = Events.empty; >} in
       s#drop_pc
 
-    method info = fst info_stream, finish
+    method info = fst info_stream, fst finish
     method code  = code
     method other = other
     method events  = events

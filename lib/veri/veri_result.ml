@@ -1,7 +1,5 @@
 open Core_kernel.Std
 open Bap.Std
-open Regular.Std
-open Bap_traces.Std
 
 type sema_error = [
   | `Unsound_sema (** instruction execution mismatches with trace  *)
