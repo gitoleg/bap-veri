@@ -3,14 +3,32 @@ open Bap.Std
 open Bap_traces.Std
 open Bap_plugins.Std
 open Bap_future.Std
-open Veri_policy
+
+(** TODO : write a config with ab files  *)
+let veri = "/home/oleg/.opam/4.04.0/lib/bap-veri"
 
 let () =
-  match Plugins.load () |> Result.all with
-  | Ok plugins -> ()
+  match Plugins.load ~library:[veri] () |> Result.all with
+  | Ok plugins ->
+    List.iter ~f:(fun p -> printf "%s; " @@ Plugin.name p) plugins;
+    print_newline ();
+    flush stdout;
+    ()
   | Error (path, er) ->
     Printf.eprintf "failed to load plugin from %s: %s"
-      path (Error.to_string_hum er)
+      path (Error.to_string_hum er);
+    flush stderr
+
+let string_of_error = function
+  | `Protocol_error er ->
+    sprintf "protocol error: %s"
+      (Info.to_string_hum (Error.to_info er))
+  | `System_error er ->
+    Printf.sprintf "system error: %s" (Unix.error_message er)
+  | `No_provider -> "no provider"
+  | `Ambiguous_uri -> "ambiguous uri"
+
+open Veri.Std
 
 module Veri_options = struct
   type t = {
@@ -32,20 +50,11 @@ module Program (O : Opts) = struct
 
   module Dis = Disasm_expert.Basic
 
-  let string_of_error = function
-    | `Protocol_error er ->
-      Printf.sprintf "protocol error: %s"
-        (Info.to_string_hum (Error.to_info er))
-    | `System_error er ->
-      Printf.sprintf "system error: %s" (Unix.error_message er)
-    | `No_provider -> "no provider"
-    | `Ambiguous_uri -> "ambiguous uri"
-
   let make_policy = function
-    | None -> Veri_policy.default
+    | None -> Policy.default
     | Some file ->
-      Veri_rule.Reader.of_path file |>
-      List.fold ~f:Veri_policy.add ~init:Veri_policy.empty
+      Rule.Reader.of_path file |>
+      List.fold ~f:Policy.add ~init:Policy.empty
 
   let arch_of_trace trace =
     match Dict.find (Trace.meta trace) Meta.arch with
@@ -62,12 +71,12 @@ module Program (O : Opts) = struct
       mk_er
     | Ok trace ->
       arch_of_trace trace >>= fun arch ->
-      let ctxt = new Veri.context policy trace in
-      let infos, fin = ctxt#info in
-      Veri_backend.call file infos fin;
       Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
           let dis = Dis.store_asm dis |> Dis.store_kinds in
-          let veri = new Veri.t arch dis in
+          let veri = new Exec.t arch dis in
+          let ctxt = new Exec.context policy trace in
+          let infos, fin = ctxt#info in
+          Backend.call file infos fin;
           let _ = Monad.State.exec (veri#eval_trace trace) ctxt in
           Ok ())
 
@@ -99,8 +108,8 @@ module Program (O : Opts) = struct
         match eval_file file policy with
         | Error er ->
           eprintf "error in verification: %s" (Error.to_string_hum er)
-        | Ok () -> ()) files
-
+        | Ok () -> ()) files;
+    Backend.on_exit ()
 end
 
 module Command = struct

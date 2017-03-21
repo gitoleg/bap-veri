@@ -1,8 +1,23 @@
 open Core_kernel.Std
 open Bap.Std
 open Bap_future.Std
+open Veri.Std
 
-module Info = Veri.Info
+include Self ()
+
+let () = printf "my name is %s\n" name
+
+(* module R = struct *)
+
+(*   let run fname stream fut = *)
+(*     printf "I am a simple module!\n" *)
+
+(*   let on_exit () = () *)
+
+(* end *)
+
+(* let () = Backend.register "my! test! report!"  (module R) *)
+
 
 module Report = struct
 
@@ -16,8 +31,8 @@ module Report = struct
         Format.(fprintf std_formatter "%a; " Value.pp ev)) evs
 
   let pp_data (rule, matched) =
-    let open Veri_policy in
-    Format.printf "%a\n%a" Veri_rule.pp rule Matched.pp matched
+    let open Policy in
+    Format.printf "%a\n%a" Rule.pp rule Matched.pp matched
 
   let pp_report fmt infos =
     let print info =
@@ -150,14 +165,14 @@ module Stat = struct
       | `Unsound_sema -> add (get_name i) uns
       | _ -> ()
 
-  let run file infos fin = Stream.observe infos of_info
+  let run file infos fin =
+    Stream.observe infos of_info
 
   let on_exit () =
-      Format.printf "%a\n%a\n" print_unsound () print_unknown ()
+    Format.printf "%a\n%a\n" print_unsound () print_unknown ()
 
 end
 
-
-let () = Veri_backend.register "show-errors" (module Report)
-let () = Veri_backend.register "show-summary" (module Summary)
-let () = Veri_backend.register "show-stat" (module Stat)
+let () = Backend.register "show-errors"  (module Report)
+let () = Backend.register "show-summary" (module Summary)
+let () = Backend.register "show-stat"    (module Stat)

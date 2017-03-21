@@ -1,7 +1,7 @@
 open Core_kernel.Std
 open Bap_future.Std
 
-type info = Veri.Info.t
+type info = Veri_exec.Info.t
 
 module type S = sig
   val run : string -> info stream -> unit future -> unit
@@ -15,7 +15,8 @@ let register name s =
   | `Ok -> printf "%s registered\n" name
   | `Duplicate ->
     eprintf "%s already registerd\n!" name;
-    exit 1
+    ()
+    (* exit 1 *)
 
 let registered = Hashtbl.keys processors
 
@@ -38,21 +39,20 @@ let is_proc_arg s =
 let proc_of_arg s =
   Option.value_exn (String.chop_prefix ~prefix:"--" s)
 
-let call file info fin =
+let mentioned =
   let args = Array.to_list Sys.argv in
   let args = List.filter ~f:is_proc_arg args in
-  let proc = List.map ~f:proc_of_arg args in
-  List.iter ~f:(fun p -> run p file info fin) proc
+  List.map ~f:proc_of_arg args
+
+let call file info fin =
+  List.iter ~f:(fun p -> run p file info fin) mentioned
 
 let proc_on_exit p =
   let (module P : S) = p in
   P.on_exit ()
 
 let on_exit () =
-  let args = Array.to_list Sys.argv in
-  let args = List.filter ~f:is_proc_arg args in
-  let proc = List.map ~f:proc_of_arg args in
   List.iter ~f:(fun p ->
       match Hashtbl.find processors p with
       | None -> eprintf "there is no processor with name %s\n" p
-      | Some p -> proc_on_exit p) proc
+      | Some p -> proc_on_exit p) mentioned
