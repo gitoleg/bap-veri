@@ -1,7 +1,6 @@
 open Core_kernel.Std
 open Bap_future.Std
 
-
 type info = Veri_exec.Info.t
 
 module type S = sig
@@ -9,9 +8,7 @@ module type S = sig
   val on_exit : unit -> unit
 end
 
-
 val register : string -> (module S) -> unit
-val registered : string list
-
+val registered : unit -> string list
 val call : string -> info stream -> unit future -> unit
 val on_exit : unit -> unit

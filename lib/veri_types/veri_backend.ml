@@ -3,8 +3,6 @@ open Bap_future.Std
 
 type info = Veri_exec.Info.t
 
-let () = printf "entering  Veri_backend\n"; flush stdout
-
 module type S = sig
   val run : string -> info stream -> unit future -> unit
   val on_exit : unit -> unit
@@ -17,10 +15,9 @@ let register name s =
   | `Ok -> printf "%s registered\n" name
   | `Duplicate ->
     eprintf "%s already registerd\n!" name;
-    ()
-    (* exit 1 *)
+    exit 1
 
-let registered = Hashtbl.keys processors
+let registered () = Hashtbl.keys processors
 
 let run_proc proc file info fin =
   let (module P : S) = proc in
@@ -41,13 +38,8 @@ let is_proc_arg s =
 let proc_of_arg s =
   Option.value_exn (String.chop_prefix ~prefix:"--" s)
 
-let mentioned =
-  let args = Array.to_list Sys.argv in
-  let args = List.filter ~f:is_proc_arg args in
-  List.map ~f:proc_of_arg args
-
 let call file info fin =
-  List.iter ~f:(fun p -> run p file info fin) mentioned
+  List.iter ~f:(fun p -> run p file info fin) (registered ())
 
 let proc_on_exit p =
   let (module P : S) = p in
@@ -57,4 +49,4 @@ let on_exit () =
   List.iter ~f:(fun p ->
       match Hashtbl.find processors p with
       | None -> eprintf "there is no processor with name %s\n" p
-      | Some p -> proc_on_exit p) mentioned
+      | Some p -> proc_on_exit p) (registered ())

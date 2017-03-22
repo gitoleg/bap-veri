@@ -8,9 +8,6 @@ open SM.Monad_infix
 type 'a u = 'a Bil.Result.u
 type event = Trace.event
 
-
-let () = printf "entering  Veri_traci\n"; flush stdout
-
 let stub = fun _ -> SM.return ()
 
 class context trace =

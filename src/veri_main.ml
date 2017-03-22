@@ -140,8 +140,7 @@ module Command = struct
 
   let create a b c = Veri_options.Fields.create a b c
 
-  let run_t =
-    Term.(const create $ rules $ filename $ output)
+  let run_t = Term.(const create $ rules $ filename $ output)
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in

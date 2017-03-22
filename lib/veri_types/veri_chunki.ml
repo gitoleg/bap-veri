@@ -2,8 +2,6 @@ open Core_kernel.Std
 open Bap.Std
 open Bap_traces.Std
 
-let () = printf "entering  Veri_chunki\n"; flush stdout
-
 module SM = Monad.State
 open SM.Monad_infix
 

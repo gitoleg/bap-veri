@@ -3,7 +3,6 @@ open Bap.Std
 open Bap_traces.Std
 open Bap_future.Std
 
-
 type event = Trace.event
 
 module Info : sig

@@ -80,6 +80,7 @@ module Std : sig
 
 
   module Rule : sig
+    (** rule = ACTION : INSN : EVENT : EVENT  *)
 
     type t [@@deriving bin_io, compare, sexp]
     type action [@@deriving bin_io, compare, sexp]
@@ -200,7 +201,7 @@ module Std : sig
     end
 
     val register : string -> (module S) -> unit
-    val registered : string list
+    val registered : unit -> string list
     val call : string -> Info.t stream -> unit future -> unit
     val on_exit : unit -> unit
   end

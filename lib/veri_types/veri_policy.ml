@@ -4,8 +4,6 @@ open Bap.Std
 open Bap_traces.Std
 open Regular.Std
 
-let () = printf "entering  Veri_policy\n"; flush stdout
-
 module Rule = Veri_rule
 
 type event = Trace.event [@@deriving bin_io, compare, sexp]

@@ -3,8 +3,6 @@ open Regular.Std
 
 type trial = Pcre.regexp
 
-let () = printf "entering  Veri_rule\n"; flush stdout
-
 let empty = ""
 let trial_exn s = Pcre.regexp ~flags:[`ANCHORED] s
 let er s = Error (Error.of_string s)

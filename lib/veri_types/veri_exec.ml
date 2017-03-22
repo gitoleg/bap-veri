@@ -4,8 +4,6 @@ open Bap_traces.Std
 open Bap_future.Std
 
 
-let () = printf "entering  Veri_exec\n"; flush stdout
-
 module Dis = Disasm_expert.Basic
 
 module SM = Monad.State

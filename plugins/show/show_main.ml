@@ -77,7 +77,7 @@ module Summary = struct
       let make name r = name, pcnt !r, !r in
       let ps =
         [make "undisasmed" und;
-         make "unsound semabtic" uns;
+         make "unsound semantic" uns;
          make "unknown semantic" unk;
          make "successful" suc] in
       print_table fmt
@@ -86,7 +86,7 @@ module Summary = struct
          "abs", (fun (_,_,x) -> Printf.sprintf "%d" x);] ps
 
   let run file infos fin = Stream.observe infos incr
-  let on_exit () = Format.printf "%a" print ()
+  let on_exit () = Format.printf "Summary:\n%a" print ()
 
 end
 
@@ -101,11 +101,11 @@ module Stat = struct
     let max_row_len = 10 in
     let max_col_cnt = 5 in
     let names = Hashtbl.keys unk in
+    Format.fprintf fmt "Instructions with unknown semantic \n";
     match List.sort ~cmp:String.compare names with
     | [] -> ()
     | names when List.length names <= max_row_len ->
-      let names' = "unknown:" :: names in
-      List.iter ~f:(Format.fprintf fmt "%s ") names';
+      List.iter ~f:(Format.fprintf fmt "%s ") names;
       Format.print_newline ()
     | names ->
       let rows, row, _ = List.fold ~init:([], [], 0)
@@ -120,22 +120,23 @@ module Stat = struct
         make_col 0; make_col 1; make_col 2; make_col 3; make_col 4; ] in
       print_table fmt cols rows
 
-  let print_unsound fmt () =
-    Format.fprintf fmt "instructions with unsound semantic \n";
-    let data = Hashtbl.to_alist uns in
-    let data =
-      List.sort ~cmp:(fun x y -> String.compare (fst x) (fst y)) data in
-    let ok_num name =
-      match String.Table.find suc name with
-      | None -> 0
-      | Some num -> num in
-    let r = List.map ~f:(fun (name,cnt) ->
-        (name, cnt, ok_num name)) data in
-    print_table fmt
-      [ "instruction", (fun (name, _,_) -> Printf.sprintf "%s" name);
-        "failed", (fun (_,er,_) -> Printf.sprintf "%d" er);
-        "successful", (fun (_,_,ok) -> Printf.sprintf "%d" ok); ]
-      r
+  let print_unsound fmt () = match Hashtbl.to_alist uns with
+    | [] -> ()
+    | data ->
+      Format.fprintf fmt "Instructions with unsound semantic \n";
+      let data =
+        List.sort ~cmp:(fun x y -> String.compare (fst x) (fst y)) data in
+      let ok_num name =
+        match String.Table.find suc name with
+        | None -> 0
+        | Some num -> num in
+      let r = List.map ~f:(fun (name,cnt) ->
+          (name, cnt, ok_num name)) data in
+      print_table fmt
+        [ "instruction", (fun (name, _,_) -> Printf.sprintf "%s" name);
+          "failed", (fun (_,er,_) -> Printf.sprintf "%d" er);
+          "successful", (fun (_,_,ok) -> Printf.sprintf "%d" ok); ]
+        r
 
   let add name tab =
     String.Table.change tab name ~f:(function
@@ -156,9 +157,10 @@ module Stat = struct
     Stream.observe infos of_info
 
   let on_exit () =
-    Format.printf "%a\n%a\n" print_unsound () print_unknown ()
+    Format.printf "\n%a\n%a\n" print_unsound () print_unknown ()
 
 end
+
 
 let main show_errors show_stat =
   if show_errors then
@@ -168,8 +170,6 @@ let main show_errors show_stat =
   Backend.register "show-summary" (module Summary)
 
 
-let () = printf "show plugin name is %s\n" name
-
 module Cmd = struct
   open Cmdliner
 
@@ -177,15 +177,6 @@ module Cmd = struct
     `S "DESCRIPTION";
     `P "Print information about verification. ";
   ]
-
-  (* let make_flag ~doc ~name = Arg.(value & flag & info [name] ~doc) *)
-
-  (* let show_errors = *)
-  (*   make_flag ~name:"errors" *)
-  (*     ~doc:"Show detailed information about BIL errors" *)
-
-  (* let show_stat = make_flag ~name:"stat" ~doc: *)
-  (*     "Show verification statistic" *)
 
   let show_errors =
     let doc = "Show all registered api" in
@@ -195,8 +186,8 @@ module Cmd = struct
     let doc = "Show all registered api" in
     Config.(flag "stat" ~doc)
 
-   let () =
-     Config.manpage man;
-     Config.when_ready (fun {Config.get=(!)} -> main !show_errors !show_stat)
+  let () =
+    Config.manpage man;
+    Config.when_ready (fun {Config.get=(!)} -> main !show_errors !show_stat)
 
 end
