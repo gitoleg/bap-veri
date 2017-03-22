@@ -11,5 +11,4 @@ module Std = struct
   module Rule    = Veri_rule
   module Exec    = Veri_exec
   module Info    = Veri_exec.Info
-  module Backend = Veri_backend
 end

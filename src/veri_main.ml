@@ -19,15 +19,6 @@ let () =
       path (Error.to_string_hum er);
     flush stderr
 
-let string_of_error = function
-  | `Protocol_error er ->
-    sprintf "protocol error: %s"
-      (Info.to_string_hum (Error.to_info er))
-  | `System_error er ->
-    Printf.sprintf "system error: %s" (Unix.error_message er)
-  | `No_provider -> "no provider"
-  | `Ambiguous_uri -> "ambiguous uri"
-
 open Veri.Std
 
 module Veri_options = struct
@@ -45,37 +36,11 @@ module Program (O : Opts) = struct
   open Veri_options
   open O
 
-  module Dis = Disasm_expert.Basic
-
-  let make_policy = function
-    | None -> Policy.default
-    | Some file ->
-      Rule.Reader.of_path file |>
-      List.fold ~f:Policy.add ~init:Policy.empty
-
-  let arch_of_trace trace =
-    match Dict.find (Trace.meta trace) Meta.arch with
-    | None -> Or_error.error_string "trace of unknown arch"
-    | Some arch -> Ok arch
-
-  let eval_file file policy =
+  let eval_file file rules =
     let open Or_error in
-    let mk_er s = Error (Error.of_string s) in
     let uri = Uri.of_string ("file:" ^ file) in
-    match Trace.load uri with
-    | Error er ->
-      Printf.sprintf "error during loading trace: %s\n" (string_of_error er) |>
-      mk_er
-    | Ok trace ->
-      arch_of_trace trace >>= fun arch ->
-      Dis.with_disasm ~backend:"llvm" (Arch.to_string arch) ~f:(fun dis ->
-          let dis = Dis.store_asm dis |> Dis.store_kinds in
-          let veri = new Exec.t arch dis in
-          let ctxt = new Exec.context policy trace in
-          let infos, fin = ctxt#info in
-          Backend.run file infos fin;
-          let _ = Monad.State.exec (veri#eval_trace trace) ctxt in
-          Ok ())
+    Proj.create uri rules >>= fun p ->
+    Proj.run p
 
   let read_dir path =
     let dir = Unix.opendir path in
@@ -95,14 +60,18 @@ module Program (O : Opts) = struct
     Unix.closedir dir;
     files
 
+  let read_rules = function
+    | None -> []
+    | Some p -> Rule.Reader.of_path p
+
   let main () =
+    let rules = read_rules options.rules in
     let files =
       if Sys.is_directory options.path then (read_dir options.path)
       else [options.path] in
-    let policy = make_policy options.rules in
     List.iter ~f:(fun file ->
         Format.(fprintf std_formatter "%s@." file);
-        match eval_file file policy with
+        match eval_file file rules with
         | Error er ->
           eprintf "error in verification: %s" (Error.to_string_hum er)
         | Ok () -> ()) files;

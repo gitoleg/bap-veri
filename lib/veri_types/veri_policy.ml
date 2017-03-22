@@ -41,6 +41,8 @@ type result = rule * matched [@@deriving bin_io, compare, sexp]
 
 let empty = []
 let add t rule : t = rule :: t
+let rules t = t
+
 
 let default =
   let p = add empty (Rule.create_exn ~insn:".*" ~left:".*" Rule.deny) in

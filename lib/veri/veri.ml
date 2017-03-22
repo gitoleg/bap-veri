@@ -8,4 +8,7 @@ module Std = struct
   type event = Trace.event
 
   include Veri_types.Std
+  module Proj = Veri_proj
+  module Backend = Veri_proj.Backend
+  type proj = Proj.t
 end

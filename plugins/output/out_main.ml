@@ -9,7 +9,7 @@ let header = "#, file, total, succeded %, unsound %, undisasmed %, unknown %\n"
 
 let run path =
   let files = ref 0 in
-  let add name infos finish =
+  let add proj infos finish =
     incr files;
     let und = ref 0 in
     let uns = ref 0 in
@@ -27,6 +27,7 @@ let run path =
       let tot = !suc + !unk + !und + !uns in
       let rel x = float !x /. float tot *. 100.0 in
       let hd = if !files = 0 then header else "" in
+      let name = Uri.to_string (Proj.uri proj) in
       let s = sprintf "%s%d  %s  %d %.2f %.2f %.2f %.2f\n"
           hd !files name tot (rel suc) (rel uns) (rel und) (rel unk) in
       Out_channel.output_string out s;
@@ -49,6 +50,7 @@ module Cmd = struct
   let () =
     Config.manpage man;
     Config.when_ready (fun {Config.get=(!)} ->
-        Backend.register name (run !output))
+        printf "called a veri out plugin\n";
+        (* Backend.register name (run !output) *))
 
 end

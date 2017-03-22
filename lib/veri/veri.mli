@@ -145,7 +145,8 @@ module Std : sig
 
     val empty : t
     val default : t
-    val add : t -> rule -> t
+    val add   : t -> rule -> t
+    val rules : t -> rule list
 
     (** [match events rule insn left right] *)
     val match_events: rule -> string -> events -> events -> matched option
@@ -193,13 +194,24 @@ module Std : sig
       end
   end
 
+  module Proj : sig
+    type t
+
+    val create : ?backend:string -> Uri.t -> Rule.t list -> t Or_error.t
+    val run : t -> unit Or_error.t
+
+    val meta : t -> dict
+    val uri : t -> Uri.t
+    val rules : t -> Rule.t list
+  end
+
+  type proj = Proj.t
 
   module Backend : sig
-    type run = string -> Info.t stream -> unit future -> unit
+    type run = proj -> Info.t stream -> unit future -> unit
 
     val register : string -> ?on_exit:(unit -> unit) -> run -> unit
     val registered : unit -> string list
-    val run : string -> Info.t stream -> unit future -> unit
     val on_exit : unit -> unit
   end
 end

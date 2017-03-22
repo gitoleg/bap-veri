@@ -15,6 +15,7 @@ Library bap-veri
   Path:            lib/veri
   FindLibName:     bap-veri
   Modules:         Veri
+  InternalModules: Veri_proj
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri.types
@@ -23,8 +24,7 @@ Library veri_types
   Path:            lib/veri_types
   FindlibParent:   bap-veri
   FindlibName:     types
-  InternalModules: Veri_backend,
-                   Veri_chunki,
+  InternalModules: Veri_chunki,
                    Veri_exec,
                    Veri_policy,
                    Veri_result,
