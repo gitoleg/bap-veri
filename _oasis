@@ -51,6 +51,14 @@ Library show_plugin
   Install:         true
   BuildDepends:    bap-veri, textutils
 
+Library out_plugin
+  Path:            plugins/out
+  FindLibName:     veri-plugin-out
+  InternalModules: Out_main
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri
+
 # Executable run_tests
 #   Path:           tests
 #   MainIs:         run_tests.ml

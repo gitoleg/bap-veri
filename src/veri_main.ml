@@ -34,7 +34,6 @@ module Veri_options = struct
   type t = {
     rules : string option;
     path  : string;
-    out   : string option;
   } [@@deriving fields]
 end
 
@@ -74,7 +73,7 @@ module Program (O : Opts) = struct
           let veri = new Exec.t arch dis in
           let ctxt = new Exec.context policy trace in
           let infos, fin = ctxt#info in
-          Backend.call file infos fin;
+          Backend.run file infos fin;
           let _ = Monad.State.exec (veri#eval_trace trace) ctxt in
           Ok ())
 
@@ -119,10 +118,6 @@ module Command = struct
       "Input file with extension .frames or directory with .frames files" in
     Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"FILE | DIR")
 
-  let output =
-    let doc = "File to output results" in
-    Arg.(value & opt (some string) None & info ["output"] ~docv:"FILE" ~doc)
-
   let rules =
     let doc = "File with policy description" in
     Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
@@ -138,9 +133,9 @@ module Command = struct
     ] in
     Term.info "veri" ~doc ~man
 
-  let create a b c = Veri_options.Fields.create a b c
+  let create a b  = Veri_options.Fields.create a b
 
-  let run_t = Term.(const create $ rules $ filename $ output)
+  let run_t = Term.(const create $ rules $ filename )
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
@@ -160,7 +155,7 @@ module Command = struct
   let filter_argv' argv =
     let is_ours s =
       if String.is_prefix ~prefix:"--" s then
-        List.exists ~f:(fun x -> x = s) ["--rules"; "--output";]
+        List.exists ~f:(fun x -> x = s) ["--rules";]
       else true in
     Array.filter ~f:is_ours argv
 

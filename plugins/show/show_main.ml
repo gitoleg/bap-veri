@@ -39,10 +39,10 @@ module Report = struct
         Format.print_flush () in
     Stream.observe infos print
 
-  let on_exit () = ()
-
   let run file infos fin =
     Format.printf "%a\n" pp_report infos
+
+  let register () = Backend.register "show-errors" run
 
 end
 
@@ -87,6 +87,8 @@ module Summary = struct
 
   let run file infos fin = Stream.observe infos incr
   let on_exit () = Format.printf "Summary:\n%a" print ()
+
+  let register () = Backend.register "show-summary" ~on_exit run
 
 end
 
@@ -159,19 +161,18 @@ module Stat = struct
   let on_exit () =
     Format.printf "\n%a\n%a\n" print_unsound () print_unknown ()
 
+  let register () = Backend.register "show-stat" ~on_exit run
+
 end
 
 
 let main show_errors show_stat =
-  if show_errors then
-    Backend.register "show-errors" (module Report);
-  if show_stat then
-    Backend.register "show-stat" (module Stat);
-  Backend.register "show-summary" (module Summary)
+  if show_errors then Report.register ();
+  if show_stat then Stat.register ();
+  Summary.register ()
 
 
 module Cmd = struct
-  open Cmdliner
 
   let man = [
     `S "DESCRIPTION";

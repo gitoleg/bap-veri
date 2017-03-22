@@ -195,14 +195,11 @@ module Std : sig
 
 
   module Backend : sig
-    module type S = sig
-      val run : string -> Info.t stream -> unit future -> unit
-      val on_exit : unit -> unit
-    end
+    type run = string -> Info.t stream -> unit future -> unit
 
-    val register : string -> (module S) -> unit
+    val register : string -> ?on_exit:(unit -> unit) -> run -> unit
     val registered : unit -> string list
-    val call : string -> Info.t stream -> unit future -> unit
+    val run : string -> Info.t stream -> unit future -> unit
     val on_exit : unit -> unit
   end
 end
