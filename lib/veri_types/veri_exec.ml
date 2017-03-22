@@ -3,6 +3,9 @@ open Bap.Std
 open Bap_traces.Std
 open Bap_future.Std
 
+
+let () = printf "entering  Veri_exec\n"; flush stdout
+
 module Dis = Disasm_expert.Basic
 
 module SM = Monad.State
@@ -49,6 +52,7 @@ module Diff = struct
   let pp fmt rs = List.iter ~f:(ppr fmt) rs
 end
 
+
 let bytes = Value.Tag.register ~name:"bytes"
     ~uuid:"3e02c0e1-6eab-41af-843c-aaf702a942d6"
     (module String)
@@ -72,6 +76,7 @@ let diff = Value.Tag.register ~name:"diff"
 let addr = Value.Tag.register ~name:"insn address"
     ~uuid:"c1bc450a-a435-4181-bcaf-9cbdf222757c"
     (module Addr)
+
 
 module Info = struct
   type t = {

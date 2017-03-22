@@ -1,0 +1,63 @@
+(* OASIS_START *)
+(* OASIS_STOP *)
+
+let oasis_env =
+  BaseEnvLight.load
+    ~allow_empty:true
+    ()
+let expand s = BaseEnvLight.var_expand s oasis_env
+
+type rule = unit -> unit
+
+module Rules : sig
+  val add : rule -> unit
+  val dispatch : hook -> unit
+end = struct
+  let rules : (unit -> unit) list ref  = ref []
+  let add rule = rules := rule :: !rules
+  let dispatch = function
+    | Before_rules -> !rules |> List.iter (fun rule -> rule ())
+    | _ -> ()
+end
+
+let chop_extension file =
+  try Filename.chop_extension file
+  with exn -> invalid_arg ("Failed to chop extension from '" ^ file ^ "'")
+
+let unit_of_package pkg =
+  let open MyOCamlbuildFindlib in
+  let ocamlfind s =
+    run_and_read (exec_from_conf "ocamlfind" ^ " " ^ s) in
+  let archive = ocamlfind ("query -format %a -predicates byte " ^ pkg) in
+  if String.length archive > 3
+  then Some (chop_extension archive)
+  else None
+
+let predicate_used_packages = function
+  | After_rules ->
+    MyOCamlbuildFindlib.find_packages () |>
+    List.iter (fun pkg -> match unit_of_package pkg with
+        | None -> ()
+        | Some lib ->
+          flag ["ocaml"; "link"; "pkg_"^pkg]
+            (S [A "-predicates"; A ("used_"^lib)]))
+  | _ -> ()
+
+
+
+let predicate_used_libs = function
+  | After_rules ->
+    package_default.MyOCamlbuildBase.lib_ocaml |>
+    List.iter (fun (lib,_,_) ->
+        flag ["ocaml"; "link"; "use_"^lib]
+          (S [A "-predicates"; A ("used_"^lib)]))
+  | _ -> ()
+
+
+
+let () =
+  Ocamlbuild_plugin.dispatch (fun stage ->
+      Rules.dispatch stage;
+      dispatch_default stage;
+      predicate_used_libs stage;
+      predicate_used_packages stage;)

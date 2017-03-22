@@ -1,6 +1,8 @@
 open Core_kernel.Std
 open Bap.Std
 
+let () = printf "entering  Veri_result\n"; flush stdout
+
 type sema_error = [
   | `Unsound_sema (** instruction execution mismatches with trace  *)
   | `Unknown_sema (** instruction semantic is unknown for lifter   *)

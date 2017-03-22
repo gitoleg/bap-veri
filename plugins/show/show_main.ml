@@ -1,6 +1,7 @@
 open Core_kernel.Std
 open Bap.Std
 open Bap_future.Std
+
 open Veri.Std
 
 include Self ()
@@ -167,7 +168,7 @@ let main show_errors show_stat =
   Backend.register "show-summary" (module Summary)
 
 
-let () = printf "name is %s\n" name
+let () = printf "show plugin name is %s\n" name
 
 module Cmd = struct
   open Cmdliner

@@ -158,8 +158,18 @@ module Command = struct
         else opt :: acc, false) (Array.to_list argv) |>
     fst |> List.rev |> Array.of_list
 
+  let filter_argv' argv =
+    let is_ours s =
+      if String.is_prefix ~prefix:"--" s then
+        List.exists ~f:(fun x -> x = s) ["--rules"; "--output";]
+      else true in
+    Array.filter ~f:is_ours argv
+
   let parse argv =
-    let argv = filter_argv argv in
+    let argv = filter_argv' argv in
+    printf "filtered \n";
+    Array.iter ~f:(fun a -> printf "%s; " a) argv;
+    print_newline ();
     match Term.eval ~argv (run_t, info) ~catch:false with
     | `Ok opts -> opts
     | `Error `Parse -> exit 64

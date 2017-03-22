@@ -16,7 +16,6 @@ module Std : sig
     type insn = Dis.full_insn
   end
 
-
   module Traci : sig
     class context : Trace.t -> object('s)
         inherit Bili.context
@@ -112,12 +111,10 @@ module Std : sig
 
     val skip : action
     val deny : action
-
     val action : t -> action
     val insn   : t -> field
     val left   : t -> field
     val right  : t -> field
-
     val is_empty : field -> bool
 
     (** [match_field t field str] - match a given string with a field. *)
@@ -146,11 +143,8 @@ module Std : sig
     [@@deriving bin_io, compare, sexp]
 
     val empty : t
-
     val default : t
-
     val add : t -> rule -> t
-
 
     (** [match events rule insn left right] *)
     val match_events: rule -> string -> events -> events -> matched option

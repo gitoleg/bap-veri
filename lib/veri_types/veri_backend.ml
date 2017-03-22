@@ -3,6 +3,8 @@ open Bap_future.Std
 
 type info = Veri_exec.Info.t
 
+let () = printf "entering  Veri_backend\n"; flush stdout
+
 module type S = sig
   val run : string -> info stream -> unit future -> unit
   val on_exit : unit -> unit

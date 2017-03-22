@@ -7,26 +7,41 @@ Maintainers:  Ivan Gotovchits <ivg@ieee.org>,
               Oleg Kamenkov <forown@yandex.ru>
 License:      MIT
 Copyrights:   (C) 2016 Carnegie Mellon University
-Plugins:      META (0.4), DevFiles (0.4)
+Plugins:      META (0.4)
 BuildTools:   ocamlbuild
 BuildDepends: ppx_jane, core_kernel, bap, bap-traces, bap-future, threads
 
-Library veri
+Library bap-veri
   Path:            lib/veri
   FindLibName:     bap-veri
   Modules:         Veri
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri.types
+
+Library veri_types
+  Path:            lib/veri_types
+  FindlibParent:   bap-veri
+  FindlibName:     types
   InternalModules: Veri_backend,
                    Veri_chunki,
                    Veri_exec,
                    Veri_policy,
                    Veri_result,
                    Veri_rule,
-                   Veri_traci
+                   Veri_traci,
+                   Veri_types
   CompiledObject:  best
-  Install:         true
   NativeOpt:       -pp 'ppx-jane -dump-ast'
   ByteOpt:         -pp 'ppx-jane -dump-ast'
   BuildDepends:    pcre
+
+Executable "bap-veri"
+  Path:           src
+  MainIs:         veri_main.ml
+  CompiledObject: best
+  Install:        true
+  BuildDepends:   bap.plugins, bap-veri, cmdliner, findlib.dynload
 
 Library show_plugin
   Path:            plugins/show
@@ -35,13 +50,6 @@ Library show_plugin
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri, textutils
-
-Executable "bap-veri"
-  Path:           src
-  MainIs:         veri_main.ml
-  CompiledObject: best
-  Install:        true
-  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner
 
 # Executable run_tests
 #   Path:           tests

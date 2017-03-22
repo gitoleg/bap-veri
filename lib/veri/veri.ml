@@ -1,19 +1,13 @@
 open Core_kernel.Std
 open Bap.Std
 open Bap_traces.Std
+open Bap_future.Std
+
+let () = printf "entering  Veri.Std\n"; flush stdout
 
 module Std = struct
-
   type 'a u = 'a Bil.Result.u
   type event = Trace.event
 
-  module Traci   = Veri_traci
-  module Chunki  = Veri_chunki
-  module Disasm  = Chunki.Disasm
-  module Policy  = Veri_policy
-  module Result  = Veri_result
-  module Rule    = Veri_rule
-  module Exec    = Veri_exec
-  module Info    = Exec.Info
-  module Backend = Veri_backend
+  include Veri_types.Std
 end
