@@ -8,16 +8,16 @@ type proj = t
 
 module Backend : sig
   type info = Veri_exec.Info.t
-  type run = proj -> info stream -> unit future -> unit
+  type run = proj -> unit
 
-  val register : string -> ?on_exit:(unit -> unit) -> run -> unit
-  val registered : unit -> string list
+  val register : ?on_exit:(unit -> unit) -> run -> unit
   val on_exit : unit -> unit
 end
 
 val create : ?backend:string -> Uri.t -> Veri_rule.t list -> t Or_error.t
 val run : t -> unit Or_error.t
 
-val meta : t -> dict
-val uri : t -> Uri.t
+val uri   : t -> Uri.t
+val meta  : t -> dict
+val info  : t -> Veri_exec.Info.t stream * unit Future.t
 val rules : t -> Veri_rule.t list

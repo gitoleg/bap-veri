@@ -11,6 +11,7 @@ type proj = {
   trace : Trace.t;
   policy : Veri_policy.t;
   backend : string;
+  context : Veri_exec.context;
 }
 
 type t = proj
@@ -18,26 +19,20 @@ type t = proj
 module Backend = struct
 
   type info = Veri_exec.Info.t
-  type run = proj -> info stream -> unit future -> unit
+  type run = proj -> unit
 
-  let processors = String.Table.create ()
+  let processors = Queue.create ()
 
-  let register name ?on_exit run =
-    match Hashtbl.add processors name (run, on_exit) with
-    | `Ok -> ()
-    | `Duplicate ->
-      eprintf "%s already registerd\n!" name;
-      exit 1
+  let register ?on_exit run =
+    Queue.enqueue processors (run, on_exit)
 
-  let registered () = Hashtbl.keys processors
-
-  let process proj info fin =
-    Hashtbl.iteri
-      ~f:(fun ~key ~data -> (fst data) proj info fin) processors
+  let process proj =
+    Queue.iter
+      ~f:(fun pass -> (fst pass) proj) processors
 
   let on_exit () =
-    Hashtbl.iteri
-      ~f:(fun ~key ~data -> match snd data with
+    Queue.iter
+      ~f:(fun pass -> match snd pass with
           | None -> ()
           | Some f -> f ()) processors
 end
@@ -68,7 +63,9 @@ let create ?(backend="llvm") uri rules =
   | Error er ->
     Printf.sprintf "error during loading trace: %s\n" (string_of_error er) |>
     mk_er
-  | Ok trace -> Ok { trace; uri; policy; backend; }
+  | Ok trace ->
+    let context = new Veri_exec.context policy trace in
+    Ok { trace; uri; policy; backend; context; }
 
 let run t =
   let open Or_error in
@@ -76,12 +73,11 @@ let run t =
   Dis.with_disasm ~backend:t.backend (Arch.to_string arch) ~f:(fun dis ->
       let dis = Dis.store_asm dis |> Dis.store_kinds in
       let veri = new Veri_exec.t arch dis in
-      let ctxt = new Veri_exec.context t.policy t.trace in
-      let infos, fin = ctxt#info in
-      Backend.process t infos fin;
-      let _ = Monad.State.exec (veri#eval_trace t.trace) ctxt in
+      Backend.process t;
+      let _ = Monad.State.exec (veri#eval_trace t.trace) t.context in
       Ok ())
 
-let rules t = Veri_policy.rules t.policy
-let meta t = Trace.meta t.trace
 let uri t = t.uri
+let meta t = Trace.meta t.trace
+let info t = t.context#info
+let rules t = Veri_policy.rules t.policy

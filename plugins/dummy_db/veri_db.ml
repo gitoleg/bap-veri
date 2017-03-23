@@ -5,7 +5,7 @@ open Bap_traces.Std
 
 include Self()
 
-module Q = Veri_numbers
+open Lite
 
 (** YYYY-MM-DD HH:MM:SS in UTC *)
 let get_time () =
@@ -17,99 +17,13 @@ let get_time () =
 
 let bap_version = Config.version
 
-type kind = Trace | Static [@@deriving sexp]
-
-module Tab = struct
-  type t = {
-    name : string;
-    desc : string;
-  }
-
-  type typ = Int | Text
-  type traits = Not_null | Key
-
-  type col = string * typ * traits list
-
-  let checked ?cb db action q = match Sqlite3.exec ?cb db q with
-    | Sqlite3.Rc.OK -> Ok ()
-    | rc ->
-      Or_error.error_string @@
-      sprintf "error: can't %s: %s, %s\n" action (Sqlite3.Rc.to_string rc)
-        (Sqlite3.errmsg db)
-
-  let try_add_traits to_add t traits =
-    if to_add then t::traits else traits
-
-  let string_of_typ = function
-    | Int -> "INTEGER"
-    | Text -> "TEXT"
-
-  let string_of_traits = function
-    | Not_null -> "NOT NULL"
-    | Key -> ""
-
-  let string_of_col (name, typ, traits) =
-    sprintf "%s %s %s" name (string_of_typ typ) @@
-    List.fold ~init:""
-      ~f:(fun s t -> sprintf "%s%s " s @@ string_of_traits t) traits
-
-  let col ?(key=false) ?(not_null=false) name typ =
-    let traits = try_add_traits
-        key Key (try_add_traits not_null Not_null []) in
-    name, typ, traits
-
-  let keys cols =
-    let is_key (_,_,t) = List.exists ~f:(fun t -> t = Key) t in
-    List.filter ~f:is_key cols
-
-  let col_name (x,_,_) = x
-
-  let create name cols =
-    let keys = List.map ~f:col_name (keys cols) in
-    let keys = String.concat ~sep:", " keys in
-    let cols = List.map ~f:string_of_col cols in
-    let cols = String.concat ~sep:", " cols in
-    let desc = sprintf
-        "CREATE TABLE %s (%s, PRIMARY KEY (%s));" name cols keys in
-    {name; desc}
-
-  let add db tab =
-    checked db (sprintf "create %s tab" tab.name) tab.desc
-
-  let exists db name =
-    let q = sprintf
-        "SELECT name FROM sqlite_master WHERE type='table' AND \
-         name='%s'" name in
-    let a = ref None in
-    let cb x _ = a := x.(0) in
-    checked ~cb db (sprintf "check table %s exists" name) q >>= fun () ->
-    Ok (!a <> None)
-
-  let add_if_absent db tab =
-    exists db tab.name >>= fun r ->
-    if not r then add db tab
-    else Ok ()
-
-  let insert db tab data =
-    match data with
-    | [] -> Ok ()
-    | data ->
-      let data = String.concat ~sep:"," data in
-      let query = sprintf "INSERT INTO %s VALUES %s;" tab.name data in
-      checked db (sprintf "insert into %s" tab.name) query
-
-  let get_max db tab col =
-    let q = sprintf "SELECT MAX(%s) FROM %s" col tab.name in
-    let r = ref None in
-    let cb row _ = r := row.(0) in
-    let dscr =
-      sprintf "get max from %s column in %s" col tab.name in
-    checked ~cb db dscr q >>= fun () ->
-    match !r with
-    | None -> Ok None
-    | Some x -> Ok (Some x)
-
-end
+type kind = [ `Static | `Trace ] [@@deriving sexp]
+type task_id = Int64.t
+type write = Tab.t * string list
+type t = {
+  db : Lite.t;
+  wr : write list;
+}
 
 let task_tab = Tab.(create "task" [
     col ~key:true ~not_null:true "Id" Int;
@@ -164,12 +78,26 @@ let bin_info_tab = Tab.(create "bin_info" [
     col ~not_null:true "Max_addr" Int;
   ])
 
-let add_task db name =
-  let data = sprintf "(NULL, '%s')" name in
-  Tab.insert db task_tab [data] >>= fun () ->
-  Ok (Sqlite3.last_insert_rowid db)
+let open_db name =
+  let db = open_db name in
+  let add = Tab.add_if_absent db in
+  add task_tab >>= fun () ->
+  add info_tab >>= fun () ->
+  add dyn_info_tab >>= fun () ->
+  add task_insn_tab >>= fun () ->
+  add insn_tab >>= fun () ->
+  add dyn_data_tab >>= fun () ->
+  add bin_info_tab >>= fun () ->
+  Ok {db; wr = []}
 
-let add_info db task_id kind ~name ~arch ~comp_ops ~extra =
+let close_db t = close_db t.db
+
+let add_task t name =
+  let data = sprintf "(NULL, '%s')" name in
+  Tab.insert t.db task_tab [data] >>= fun () ->
+  Ok (Sqlite3.last_insert_rowid t.db)
+
+let add_info t task_id ?(comp_ops="") kind arch name =
   let data = sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s', '%s', '%s')"
       task_id
       (Sexp.to_string (sexp_of_kind kind))
@@ -178,18 +106,21 @@ let add_info db task_id kind ~name ~arch ~comp_ops ~extra =
       bap_version
       arch
       comp_ops
-      extra in
-  Tab.insert db info_tab [data]
+      "" in
+  {t with wr = (info_tab, [data]) :: wr}
 
 let sql_quote str =
   let module S = String.Search_pattern in
   S.replace_all (S.create "'") ~in_:str ~with_:"''"
 
-let add_dyn_info db task_id rules obj_ops =
+let add_dyn_info t task_id ?(obj_ops="") rules =
   let policy = sql_quote @@ List.fold ~init:"" ~f:(fun s r ->
       sprintf "%s%s; " s (Veri_rule.to_string r)) rules in
   let data = sprintf "('%Ld', '%s', '%s')" task_id obj_ops policy in
-  Tab.insert db dyn_info_tab [data]
+  {t with wr = (dyn_info_tab [data]) :: wr }
+
+let add_insn t task_id res addr bytes insn =
+
 
 class tmp_var_mapper = object
   inherit Stmt.mapper
@@ -312,7 +243,7 @@ let concat_ops ops =
 let with_close db r = close_db db; r
 
 let update_with_trace
-    ?compiler_ops ?object_ops ?extra ?trace_name trace rules result name =
+    ?compiler_ops ?object_ops ?trace_name trace rules result name =
   open_db name >>= fun db ->
   let r =
     target_name trace >>= fun name ->

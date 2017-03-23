@@ -9,7 +9,7 @@ let header = "#, file, total, succeded %, unsound %, undisasmed %, unknown %\n"
 
 let run path =
   let files = ref 0 in
-  let add proj infos finish =
+  let add proj =
     incr files;
     let und = ref 0 in
     let uns = ref 0 in
@@ -32,6 +32,7 @@ let run path =
           hd !files name tot (rel suc) (rel uns) (rel und) (rel unk) in
       Out_channel.output_string out s;
       Out_channel.close out in
+    let infos, finish = Proj.info proj in
     Stream.observe infos of_info;
     Future.upon finish print in
   add
@@ -50,7 +51,7 @@ module Cmd = struct
   let () =
     Config.manpage man;
     Config.when_ready (fun {Config.get=(!)} ->
-        printf "called a veri out plugin\n";
-        (* Backend.register name (run !output) *))
+        printf "called a veri out plugin with path %s\n" !output;
+        (* Backend.register (run !output) *))
 
 end

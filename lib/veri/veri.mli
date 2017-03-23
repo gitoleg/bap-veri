@@ -200,18 +200,18 @@ module Std : sig
     val create : ?backend:string -> Uri.t -> Rule.t list -> t Or_error.t
     val run : t -> unit Or_error.t
 
-    val meta : t -> dict
-    val uri : t -> Uri.t
+    val uri   : t -> Uri.t
+    val meta  : t -> dict
+    val info  : t -> Info.t stream * unit Future.t
     val rules : t -> Rule.t list
   end
 
   type proj = Proj.t
 
   module Backend : sig
-    type run = proj -> Info.t stream -> unit future -> unit
+    type run = proj -> unit
 
-    val register : string -> ?on_exit:(unit -> unit) -> run -> unit
-    val registered : unit -> string list
+    val register : ?on_exit:(unit -> unit) -> run -> unit
     val on_exit : unit -> unit
   end
 end

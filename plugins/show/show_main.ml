@@ -39,10 +39,11 @@ module Report = struct
         Format.print_flush () in
     Stream.observe infos print
 
-  let run file infos fin =
-    Format.printf "%a\n" pp_report infos
+  let run p =
+    let info, _ = Proj.info p in
+    Format.printf "%a\n" pp_report info
 
-  let register () = Backend.register "show-errors" run
+  let register () = Backend.register run
 
 end
 
@@ -85,10 +86,13 @@ module Summary = struct
          "rel", (fun (_,x,_) -> Printf.sprintf "%.2f%%" x);
          "abs", (fun (_,_,x) -> Printf.sprintf "%d" x);] ps
 
-  let run file infos fin = Stream.observe infos incr
+  let run p =
+    let info,_ = Proj.info p in
+    Stream.observe info incr
+
   let on_exit () = Format.printf "Summary:\n%a" print ()
 
-  let register () = Backend.register "show-summary" ~on_exit run
+  let register () = Backend.register ~on_exit run
 
 end
 
@@ -155,22 +159,21 @@ module Stat = struct
       | `Unsound_sema -> add (get_name i) uns
       | _ -> ()
 
-  let run file infos fin =
-    Stream.observe infos of_info
+  let run p =
+    let info, _ = Proj.info p in
+    Stream.observe info of_info
 
   let on_exit () =
     Format.printf "\n%a\n%a\n" print_unsound () print_unknown ()
 
-  let register () = Backend.register "show-stat" ~on_exit run
+  let register () = Backend.register ~on_exit run
 
 end
 
-
-let main show_errors show_stat =
+let main show_errors show_stat show_sum =
   if show_errors then Report.register ();
   if show_stat then Stat.register ();
-  Summary.register ()
-
+  if show_sum then Summary.register ()
 
 module Cmd = struct
 
@@ -180,15 +183,21 @@ module Cmd = struct
   ]
 
   let show_errors =
-    let doc = "Show all registered api" in
+    let doc = "Show verification errors, i.e. mismatches" in
     Config.(flag "errors" ~doc)
 
   let show_stat =
-    let doc = "Show all registered api" in
+    let doc = "Show verification statistics, tables of
+      instructions and results of their's lifting" in
     Config.(flag "stat" ~doc)
+
+  let show_sum =
+    let doc = "Show a brief summary about verification" in
+    Config.(flag "sum" ~doc)
 
   let () =
     Config.manpage man;
-    Config.when_ready (fun {Config.get=(!)} -> main !show_errors !show_stat)
+    Config.when_ready (fun {Config.get=(!)} ->
+        main !show_errors !show_stat !show_sum)
 
 end

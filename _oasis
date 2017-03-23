@@ -59,6 +59,14 @@ Library out_plugin
   Install:         true
   BuildDepends:    bap-veri
 
+# Library dummy_db_plugin
+#   Path:            plugins/dummy_db
+#   FindLibName:     veri-plugin-dummy_db
+#   InternalModules: Lite, Main, Veri_db
+#   CompiledObject:  best
+#   Install:         true
+#   BuildDepends:    bap-veri, sqlite3
+
 # Executable run_tests
 #   Path:           tests
 #   MainIs:         run_tests.ml

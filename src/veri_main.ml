@@ -7,17 +7,36 @@ open Bap_future.Std
 (** TODO : write a config with ab files  *)
 let veri = "/home/oleg/.opam/4.04.0/lib/bap-veri"
 
-let () =
-  match Plugins.load ~library:[veri] () |> Result.all with
-  | Ok plugins ->
-    List.iter ~f:(fun p -> printf "%s; " @@ Plugin.name p) plugins;
-    print_newline ();
-    flush stdout;
-    ()
+let check_loaded = function
+  | Ok plugins -> ()
   | Error (path, er) ->
     Printf.eprintf "failed to load plugin from %s: %s"
-      path (Error.to_string_hum er);
-    flush stderr
+      path (Error.to_string_hum er)
+
+let load_veri_plugins () =
+  let is_veri_plg p =
+    String.is_prefix ~prefix:"veri" @@ Plugin.name p in
+  let is_set p =
+    let name = Plugin.name p in
+    Array.exists ~f:(fun arg ->
+        let dash_name = "-" ^ name in
+        let dash_dash_name = "--" ^ name in
+        String.is_prefix ~prefix:dash_name arg ||
+        String.is_prefix ~prefix:dash_dash_name arg) Sys.argv in
+  let plgs = Plugins.list ~library:[veri] () in
+  let plgs = List.filter ~f:is_veri_plg plgs in
+  let plgs = List.filter ~f:is_set plgs in
+  List.fold ~init:[] ~f:(fun a p ->
+      match Plugin.load p with
+      | Ok () -> Ok p :: a
+      | Error er -> Error (Plugin.path p, er) :: a) plgs
+  |> Result.all |> check_loaded
+
+let load_bap_plugins () =
+  Plugins.load () |> Result.all |> check_loaded
+
+let () = load_bap_plugins ()
+let () = load_veri_plugins ()
 
 open Veri.Std
 
@@ -108,12 +127,13 @@ module Command = struct
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
-    let known_plugins = Plugins.list () |> List.map ~f:Plugin.name in
+    let known_plugins = Plugins.list ~library:[veri] () |> List.map ~f:Plugin.name in
     let known_names = known_passes @ known_plugins in
     let prefixes = List.map known_names  ~f:(fun name -> "--" ^ name) in
     let is_prefix str prefix = String.is_prefix ~prefix str in
     let is_others opt =
-      is_prefix opt "--" && List.exists ~f:(fun p -> is_prefix opt p) prefixes in
+      is_prefix opt "--" && List.exists ~f:(fun p -> is_prefix opt p)
+        prefixes in
     List.fold ~init:([], false) ~f:(fun (acc, drop) opt ->
         if drop then acc, false
         else
