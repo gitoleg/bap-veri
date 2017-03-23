@@ -1,5 +1,5 @@
 ![]
-(/graphs/graph/arm/armv7:_errors_structure.png?raw=true)
+(graph/arm/armv7:_errors_structure.png?raw=true)
 
 
 
