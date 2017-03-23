@@ -89,7 +89,6 @@ bap-veri --show-errors --show-stat --rules "path to rules file" PATH
 ```
 
 ![Image of arm errors] 
-
 (https://github.com/gitoleg/bil-verification/blob/graphs/graph/arm/armv7:_errors_structure.png)
 
 
