@@ -97,7 +97,8 @@ module Tab = struct
 
 end
 
-let open_db path = Sqlite3.db_open path
+(** TODO: add some checks  *)
+let open_db path = Ok (Sqlite3.db_open path)
 
 let close_db db =
   if Sqlite3.db_close db then ()

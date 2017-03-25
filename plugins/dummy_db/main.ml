@@ -38,11 +38,11 @@ let run_static db_path p =
       let arch = Option.value_exn (Dict.find (Proj.meta p) Meta.arch)
       in
       let bnds = find_exec_bounds bap_p in
-      let r =
-        Veri_db.update_with_static ~name arch bnds insns db_path in
-      match r with
-      | Ok () -> ()
-      | Error er -> eprintf "error in %s: %s" name (Error.to_string_hum er)
+      (* let r = *)
+      (*   Veri_db.update_with_static ~name arch bnds insns db_path in *)
+      (* match r with *)
+      (* | Ok () -> () *)
+      (* | Error er -> eprintf "error in %s: %s" name (Error.to_string_hum er) *)
 
 
 let run_with_trace db_path p = failwith "unimplemented"

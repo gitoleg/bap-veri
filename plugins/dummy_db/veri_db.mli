@@ -2,7 +2,7 @@
 
            info                                dynamic_data
  +-------------------+                    +-----------------------+
- | * Task_id  : Int  |<---+               | * Id_task      : Int  |<--+
+ | * Id_task  : Int  |<---+               | * Id_task      : Int  |<--+
  |-------------------|    |               | * Id_insn      : Int  |<--|
  |   Kind     : Text |    |               |-----------------------|   |
  |   Name     : Text |    |               |   Indexes      : Text |   |
@@ -10,24 +10,29 @@
  |   Bap      : Text |    |               |   Undisasmed   : Int  |   |
  |   Arch     : Text |    |               |   Unsound_sema : Int  |   |
  |   Comp_ops : Text |    |               |   Unknown_sema : Int  |   |
- |   Extra    : Text |    |               +-----------------------+   |
- +-------------------+    |                                           |
-                          |       task               task_insn        |
-                          |  +------------+     +-----------------+   |
-                          +-<| * Id : Int |>-->>| * Task_id : Int |>--|
-                          |  |------------|  +<<| * Insn_id : Int |>--+
-      dynamic_info        |  | Name : Text|  |  +-----------------+
- +-------------------+    |  +------------+  |
- | * Task_id  : Int  |<---+                  |
- |-------------------|                       |         insn
- |   Obj_ops  : Text |                       |  +-----------------+
- |   Policy   : Text |                       +->| * Id     : Int  |
- +-------------------+                          |-----------------|
-                                                |   Bytes  : Text |
-                                                |   Name   : Text |
-                                                |   Asm    : Text |
-                                                |   Bil    : Text |
-                                                +-----------------+
+ +-------------------+    |               +-----------------------+   |
+                          |                                           |
+                          |       task               task_insn        |             insn_place
+                          |  +------------+     +-----------------+   |        +-----------------+
+                          +-<| * Id : Int |>-->>| * Id_task : Int |>--|------->| * Id_task : Int |
+                          |  +------------+  +<<| * Id_insn : Int |>--+------->| * Id_insn : Int |
+      dynamic_info        |                  |  +-----------------+            | * Index   : Int |
+ +-------------------+    |                  |                                 |-----------------|
+ | * Id_task  : Int  |<---+                  |                                 |   Addr    : Int |
+ |-------------------|    |                  |         insn                    +-----------------+
+ |   Obj_ops  : Text |    |                  |  +-----------------+
+ |   Policy   : Text |    |                  +->| * Id     : Int  |
+ +-------------------+    |                     |-----------------|
+                          |                     |   Bytes  : Text |
+       bin_info           |                     |   Name   : Text |
+ +------------------+     |                     |   Asm    : Text |
+ | * Id_task : Int  |<----+                     |   Bil    : Text |
+ | * Id      : Int  |                           +-----------------+
+ |------------------|
+ | Min_addr  : Int  |
+ | Max_addr  : Int  |
+ +------------------+
+
 *)
 
 open Core_kernel.Std
@@ -35,45 +40,30 @@ open Bap.Std
 open Bap_traces.Std
 open Veri.Std
 
-type t
-type task_id
 type kind = [`Static | `Trace] [@@deriving sexp]
+type 'a task
+type t = kind task
+type trace_task = [`Trace] task
+type static_task = [`Static] task
+type insn_id
 
-val open_db : string -> t Or_error.t
-val close_db : t -> unit
-val write : t -> unit Or_error.t
-
-val add_task : t -> string -> task_id Or_error.t
+val create : string -> kind -> t Or_error.t
+val write : t -> t Or_error.t
 
 (** [add_info t task_id kind arch name] *)
-val add_info : t -> task_id -> ?comp_ops:string -> kind -> arch -> string -> t
+val add_info : t -> ?comp_ops:string -> arch -> string -> t
 
-(** [add_dyn_info db task_id rules]  *)
-val add_dyn_info : t -> task_id -> ?obj_ops:string -> Rule.t list -> t
+(** [add_dyn_info t task_id rules]  *)
+val add_dyn_info : trace_task -> ?obj_ops:string -> Rule.t list -> trace_task
 
-(** [add_insns db task_id insns], where insn = addr * bytes * insn *)
-val add_trace_insns : t -> task_id -> (addr * string * insn) seq -> t
+(** [add_insn t bytes addr insn]  *)
+val add_insn : t -> string -> Insn.t option -> t * insn_id
 
-val add_static_insn : t -> task_id -> (addr * string * insn) seq -> (addr * addr) list -> t
+(** [add_insn t bytes addr index]  *)
+val add_insn_place : t -> insn_id -> addr -> int -> t
 
-(** [update_with_trace trace rules numbers db] - saves
-    results in SQLite with name [db] *)
-(* val update_with_trace : *)
-(*   ?compiler_ops:string list -> *)
-(*   ?object_ops:string list -> *)
-(*   ?extra:string -> *)
-(*   ?trace_name:string -> *)
-(*   Trace.t -> *)
-(*   Veri_rule.t list -> *)
-(*   Veri_numbers.t -> *)
-(*   string -> unit Or_error.t *)
+(** [add_insn_dyn t  insn_id result]  *)
+val add_insn_dyn : trace_task -> insn_id -> Result.error option -> trace_task
 
-(** [update_with_static arch ~name mems insns db]  *)
-val update_with_static :
-  ?compiler_ops:string list ->
-  ?extra:string ->
-  name:string ->
-  arch ->
-  (addr * addr) list ->
-  (mem * insn) seq ->
-  string -> unit Or_error.t
+(** [add_exec_info t ranges]  *)
+val add_exec_info : static_task -> (addr * addr) list -> static_task

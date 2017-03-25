@@ -21,8 +21,6 @@ let cat header inputs output =
 
 
 let () =
-  Array.iter (Printf.printf "%s; ") Sys.argv;
-  print_newline ();
   match Array.to_list Sys.argv with
   | _ :: sep :: "--" :: (_ :: _ as ios)  ->
     let soi = List.rev ios in
