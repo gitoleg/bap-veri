@@ -52,19 +52,22 @@ let with_trace_info db info =
   let db = Veri_db.add_insn_dyn db id (error info) in
   Some db, db
 
+let arch p =
+  Option.value_exn (Dict.find (Proj.meta p) Meta.arch)
+
 let run_with_trace db_path p =
   let info, fut = Proj.info p in
   let db = Veri_db.create db_path `Trace in
   match db with
   | Error er -> eprintf "error: %s\n" (Error.to_string_hum er)
   | Ok db ->
-    (** TODO : add info (and dyn info) here  *)
+    let name = Filename.basename @@ Uri.to_string @@ Proj.uri p in
+    let db = Veri_db.add_info db (arch p) name in
+    let db = Veri_db.add_dyn_info db (Proj.rules p) in
     let s = Stream.parse info ~init:db ~f:with_trace_info in
     Stream.observe s (fun _ -> ());
     let db = Stream.upon fut s in
     Future.upon db (fun db ->
-        printf "start writing\n";
-        flush stdout;
         match Veri_db.write db with
         | Ok db -> ()
         | Error er ->
