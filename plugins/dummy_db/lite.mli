@@ -10,6 +10,7 @@ module Tab : sig
   type col
 
   val create : string -> col list -> t
+  val name : t -> string
   val exists : db -> string -> bool Or_error.t
   val insert : db -> t -> string list -> unit Or_error.t
   val col : ?key:bool -> ?not_null:bool -> string  -> typ -> col

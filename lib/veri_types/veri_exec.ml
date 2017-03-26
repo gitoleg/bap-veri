@@ -117,6 +117,7 @@ class context policy trace = object(self:'s)
     val veri_events : value list = []
     val info_stream = Stream.create ()
     val finish = Future.create ()
+    val pos = 0
 
     method! next_event =
       let next = super#next_event in
@@ -124,13 +125,14 @@ class context policy trace = object(self:'s)
       next
 
     method cleanup =
-      let s = {< other = None; veri_events = [];
+      let s = {< other = None; veri_events = []; pos = pos + 1;
                  events = Events.empty;  code = None; >} in
       s#drop_pc
 
     method merge =
       let other = Option.value_exn self#other in
       let veri_events = add_insn veri_events self#bil self#insn in
+      let veri_events = add_event index pos veri_events in
       let real = other#events in
       let ours = self#events in
       let veri = match self#error with

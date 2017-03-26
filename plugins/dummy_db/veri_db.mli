@@ -5,18 +5,18 @@
  | * Id_task  : Int  |<---+               | * Id_task      : Int  |<--+
  |-------------------|    |               | * Id_insn      : Int  |<--|
  |   Kind     : Text |    |               |-----------------------|   |
- |   Name     : Text |    |               |   Indexes      : Text |   |
- |   Date     : Text |    |               |   Successful   : Int  |   |
- |   Bap      : Text |    |               |   Undisasmed   : Int  |   |
- |   Arch     : Text |    |               |   Unsound_sema : Int  |   |
- |   Comp_ops : Text |    |               |   Unknown_sema : Int  |   |
- +-------------------+    |               +-----------------------+   |
+ |   Name     : Text |    |               |   Successful   : Int  |   |
+ |   Date     : Text |    |               |   Undisasmed   : Int  |   |
+ |   Bap      : Text |    |               |   Unsound_sema : Int  |   |
+ |   Arch     : Text |    |               |   Unknown_sema : Int  |   |
+ |   Comp_ops : Text |    |               +-----------------------+   |
+ +-------------------+    |                                           |
                           |                                           |
                           |       task               task_insn        |             insn_place
                           |  +------------+     +-----------------+   |        +-----------------+
                           +-<| * Id : Int |>-->>| * Id_task : Int |>--|------->| * Id_task : Int |
                           |  +------------+  +<<| * Id_insn : Int |>--+------->| * Id_insn : Int |
-      dynamic_info        |                  |  +-----------------+            | * Index   : Int |
+      dynamic_info        |                  |  +-----------------+            | * Pos     : Int |
  +-------------------+    |                  |                                 |-----------------|
  | * Id_task  : Int  |<---+                  |                                 |   Addr    : Int |
  |-------------------|    |                  |         insn                    +-----------------+
@@ -40,11 +40,9 @@ open Bap.Std
 open Bap_traces.Std
 open Veri.Std
 
-type kind = [`Static | `Trace] [@@deriving sexp]
-type 'a task
-type t = kind task
-type trace_task = [`Trace] task
-type static_task = [`Static] task
+type kind = [ `Trace | `Static ]
+type task
+type t = task
 type insn_id
 
 val create : string -> kind -> t Or_error.t
@@ -54,7 +52,7 @@ val write : t -> t Or_error.t
 val add_info : t -> ?comp_ops:string -> arch -> string -> t
 
 (** [add_dyn_info t task_id rules]  *)
-val add_dyn_info : trace_task -> ?obj_ops:string -> Rule.t list -> trace_task
+val add_dyn_info : task -> ?obj_ops:string -> Rule.t list -> task
 
 (** [add_insn t bytes addr insn]  *)
 val add_insn : t -> string -> Insn.t option -> t * insn_id
@@ -63,7 +61,7 @@ val add_insn : t -> string -> Insn.t option -> t * insn_id
 val add_insn_place : t -> insn_id -> addr -> int -> t
 
 (** [add_insn_dyn t  insn_id result]  *)
-val add_insn_dyn : trace_task -> insn_id -> Result.error option -> trace_task
+val add_insn_dyn : task -> insn_id -> Result.error option -> task
 
 (** [add_exec_info t ranges]  *)
-val add_exec_info : static_task -> (addr * addr) list -> static_task
+val add_exec_info : task -> (addr * addr) list -> task

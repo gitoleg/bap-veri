@@ -46,7 +46,6 @@ module Scheme = struct
   let dyn_data_tab = Tab.(create "dynamic_data" [
       col ~key:true ~not_null:true "Id_task" Int;
       col ~key:true ~not_null:true "Id_insn" Int;
-      col "Indexes" Text;
       col "Successful" Int;
       col "Undisasmed" Int;
       col "Unsound_sema" Int;
@@ -64,7 +63,6 @@ module Scheme = struct
       col "Name" Text;
       col "Asm" Text;
       col "Bil" Text;
-      col "Addrs" Text;
     ])
 
   let bin_info_tab = Tab.(create "bin_info" [
@@ -77,7 +75,7 @@ module Scheme = struct
   let insn_place_tab = Tab.(create "insn_place" [
       col ~key:true ~not_null:true "Id_task" Int;
       col ~key:true ~not_null:true "Id_insn" Int;
-      col ~key:true ~not_null:true "Index" Int;
+      col ~key:true ~not_null:true "Pos" Int;
       col ~not_null:true "Addr" Int;
     ])
 
@@ -135,26 +133,41 @@ module Insns = struct
       | `Unknown_sema -> {t with und = incr id t.und}
       | `Disasm_error -> {t with unk = incr id t.unk}
 
+  let stat t =
+    let add f items all =
+      List.fold items ~init:all ~f:(fun all (id,value) ->
+      Map.change all id (function
+          | None -> Some (f (0,0,0,0) value)
+          | Some x -> Some (f x value))) in
+    let f_suc (_,x,y,z) value = value,x,y,z in
+    let f_uns (x,_,y,z) value = x,value,y,z in
+    let f_unk (x,y,_,z) value = x,y,value,z in
+    let f_und (x,y,z,_) value = x,y,z,value in
+    add f_suc (Map.to_alist t.suc) Int64.Map.empty |>
+    add f_uns (Map.to_alist t.uns) |>
+    add f_und (Map.to_alist t.und) |>
+    add f_unk (Map.to_alist t.unk) |>
+    Map.to_alist
+
+
 end
 
 open Scheme
 
-type kind = [ `Static | `Trace ] [@@deriving sexp]
+type kind = [ `Trace | `Static ] [@@deriving sexp]
 type data = string list
 type write = Tab.t * data
 type task_id = id
 
-type 'a task = {
+type task = {
   db : string;
   wr : write list;
   task_id : id;
-  kind    : 'a;
+  kind    : kind;
   insns   : Insns.t;
 }
 
-type t = kind task
-type static_task = [`Static] task
-type trace_task = [`Trace] task
+type t = task
 
 let get_available_id db ?(id="Id") tab =
   Tab.get_max db tab id >>= fun s ->
@@ -177,12 +190,31 @@ let create name kind =
   let insns = Insns.create insn_id in
   Ok {db = name; wr = []; task_id; insns; kind}
 
+let make_stat_data t =
+  dyn_data_tab,
+  List.fold ~init:[] ~f:(fun acc (id, (suc,uns,unk,und)) ->
+      sprintf "('%Ld', '%Ld', '%d', '%d', '%d', '%d')"
+        t.task_id id suc und uns unk :: acc) (Insns.stat t.insns)
+
 let write t =
+  let cmp (t,_) (t',_) = String.compare (Tab.name t) (Tab.name t') in
+  let wr = List.sort ~cmp t.wr |>
+           List.group ~break:(fun (t,_) (t',_) -> t <> t') |>
+           List.fold ~init:[] ~f:(fun acc x ->
+               let data = List.map ~f:snd x in
+               let data = List.concat data in
+               let tab = fst @@ List.hd_exn x in
+               (tab, data) :: acc)  in
+  let wr = make_stat_data t :: wr in
   open_db t.db >>= fun db ->
-  List.map ~f:(fun (tab, data) -> Tab.insert db tab data) t.wr |>
-  Res.all_ignore >>= fun () ->
+  let res = List.fold ~init:(Ok ()) ~f:(fun r (tab, data) ->
+      match r with
+      | Ok () -> Tab.insert db tab data
+      | er -> er) wr in
   close_db db;
-  Ok {t with wr = []}
+  match res with
+  | Ok () -> Ok {t with wr = []}
+  | Error er -> Error er
 
 let add_info t ?(comp_ops="") arch name =
   let data = sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s', '%s')"

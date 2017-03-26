@@ -1,6 +1,7 @@
 open Core_kernel.Std
 open Bap.Std
 open Bap_traces.Std
+open Bap_future.Std
 module Dis = Disasm
 module Bap_project = Project
 open Veri.Std
@@ -35,21 +36,44 @@ let run_static db_path p =
                   run_passes bap_p in
       let insns = Dis.insns @@ Bap_project.disasm bap_p in
       let name = Filename.basename (Uri.to_string @@ Proj.uri p) in
-      let arch = Option.value_exn (Dict.find (Proj.meta p) Meta.arch)
-      in
+      let arch = Option.value_exn (Dict.find (Proj.meta p) Meta.arch) in
       let bnds = find_exec_bounds bap_p in
+      ()
       (* let r = *)
       (*   Veri_db.update_with_static ~name arch bnds insns db_path in *)
       (* match r with *)
       (* | Ok () -> () *)
       (* | Error er -> eprintf "error in %s: %s" name (Error.to_string_hum er) *)
 
+let with_trace_info db info =
+  let open Info in
+  let db, id = Veri_db.add_insn db (bytes info) (insn info) in
+  let db = Veri_db.add_insn_place db id (addr info) (index info) in
+  let db = Veri_db.add_insn_dyn db id (error info) in
+  Some db, db
 
-let run_with_trace db_path p = failwith "unimplemented"
+let run_with_trace db_path p =
+  let info, fut = Proj.info p in
+  let db = Veri_db.create db_path `Trace in
+  match db with
+  | Error er -> eprintf "error: %s\n" (Error.to_string_hum er)
+  | Ok db ->
+    (** TODO : add info (and dyn info) here  *)
+    let s = Stream.parse info ~init:db ~f:with_trace_info in
+    Stream.observe s (fun _ -> ());
+    let db = Stream.upon fut s in
+    Future.upon db (fun db ->
+        printf "start writing\n";
+        flush stdout;
+        match Veri_db.write db with
+        | Ok db -> ()
+        | Error er ->
+          eprintf "failed to write to database: %s\n"
+            (Error.to_string_hum er))
 
 let main path = function
-  | `Static -> Backend.register "dummy-db-static" (run_static path)
-  | `Trace -> Backend.register "dummy-db-trace" (run_with_trace path)
+  | `Static -> Backend.register (run_static path)
+  | `Trace -> Backend.register (run_with_trace path)
 
 module Cmd = struct
 
@@ -80,6 +104,7 @@ module Cmd = struct
   let () =
     Config.manpage man;
     Config.when_ready (fun {Config.get=(!)} ->
+        printf "db path is %s\n" !path;
         main !path !mode)
 
 

@@ -59,6 +59,8 @@ module Tab = struct
         "CREATE TABLE %s (%s, PRIMARY KEY (%s));" name cols keys in
     {name; desc}
 
+  let name t = t.name
+
   let add db tab =
     checked db (sprintf "create %s tab" tab.name) tab.desc
 
