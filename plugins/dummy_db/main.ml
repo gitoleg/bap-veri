@@ -20,13 +20,33 @@ let find_exec_bounds p =
           (Memory.min_addr mem, Memory.max_addr mem) :: mems
         else mems)
 
+let arch p = Option.value_exn (Dict.find (Proj.meta p) Meta.arch)
+let task_name p = Filename.basename @@ Uri.to_string @@ Proj.uri p
+
+let mem_to_str mem =
+  let deref mem =
+    Seq.unfold_step ~init:(Memory.min_addr mem)
+      ~f:(fun addr ->
+          match Memory.get ~addr mem with
+          | Ok word -> Seq.Step.Yield (word, Word.succ addr)
+          | Error _ -> Seq.Step.Done) in
+  let to_int w = ok_exn (Word.to_int w) in
+  Seq.map ~f:(fun w -> sprintf "%02X" @@ to_int w) (deref mem) |>
+  Seq.to_list |> String.concat ~sep:" "
+
+let deref mem =
+  Seq.unfold_step ~init:(Memory.min_addr mem)
+    ~f:(fun addr ->
+        match Memory.get ~addr mem with
+        | Ok word -> Seq.Step.Yield (word, Word.succ addr)
+        | Error _ -> Seq.Step.Done)
+
 let run_static db_path p =
   match Dict.find (Proj.meta p) Meta.binary with
   | None ->
     eprintf "unable to run %s static, path not found\n" name
   | Some bin ->
     let filename = Binary.(bin.path) in
-    printf "filename is %s\n" filename;
     let input = Bap_project.Input.file ~loader:"llvm"  ~filename in
     match Bap_project.create input with
     | Error er -> eprintf "error in %s %s" name (Error.to_string_hum er)
@@ -35,15 +55,23 @@ let run_static db_path p =
                   List.filter ~f:Bap_project.Pass.autorun |>
                   run_passes bap_p in
       let insns = Dis.insns @@ Bap_project.disasm bap_p in
-      let name = Filename.basename (Uri.to_string @@ Proj.uri p) in
-      let arch = Option.value_exn (Dict.find (Proj.meta p) Meta.arch) in
-      let bnds = find_exec_bounds bap_p in
-      ()
-      (* let r = *)
-      (*   Veri_db.update_with_static ~name arch bnds insns db_path in *)
-      (* match r with *)
-      (* | Ok () -> () *)
-      (* | Error er -> eprintf "error in %s: %s" name (Error.to_string_hum er) *)
+      let db = Veri_db.create db_path `Static in
+      match db with
+      | Error er -> eprintf "error: %s\n" (Error.to_string_hum er)
+      | Ok db ->
+        let db = Veri_db.add_info db (arch p) (task_name p) in
+        let db = Veri_db.add_exec_info db (find_exec_bounds bap_p) in
+        let db,_ = Seq.fold ~init:(db,0) ~f:(fun (acc, ind) (mem, insn) ->
+            let addr = Memory.min_addr mem in
+            let bytes = "" in
+            let db, id = Veri_db.add_insn db bytes (Some insn) in
+            let db = Veri_db.add_insn_place db id addr ind in
+            db, ind + 1) insns in
+        match Veri_db.write db with
+        | Ok _ -> ()
+        | Error er ->
+          eprintf "failed to write to database: %s\n"
+            (Error.to_string_hum er)
 
 let with_trace_info db info =
   let open Info in
@@ -52,24 +80,24 @@ let with_trace_info db info =
   let db = Veri_db.add_insn_dyn db id (error info) in
   Some db, db
 
-let arch p =
-  Option.value_exn (Dict.find (Proj.meta p) Meta.arch)
-
 let run_with_trace db_path p =
   let info, fut = Proj.info p in
   let db = Veri_db.create db_path `Trace in
   match db with
   | Error er -> eprintf "error: %s\n" (Error.to_string_hum er)
   | Ok db ->
-    let name = Filename.basename @@ Uri.to_string @@ Proj.uri p in
+    let name = task_name p in
     let db = Veri_db.add_info db (arch p) name in
     let db = Veri_db.add_dyn_info db (Proj.rules p) in
     let s = Stream.parse info ~init:db ~f:with_trace_info in
     Stream.observe s (fun _ -> ());
     let db = Stream.upon fut s in
     Future.upon db (fun db ->
-        match Veri_db.write db with
-        | Ok db -> ()
+        let res = Or_error.(
+            Veri_db.write db >>= fun db ->
+            Veri_db.write_stat db) in
+        match res with
+        | Ok () -> ()
         | Error er ->
           eprintf "failed to write to database: %s\n"
             (Error.to_string_hum er))
@@ -77,6 +105,9 @@ let run_with_trace db_path p =
 let main path = function
   | `Static -> Backend.register (run_static path)
   | `Trace -> Backend.register (run_with_trace path)
+  | `Dual ->
+    Backend.register (run_static path);
+    Backend.register (run_with_trace path)
 
 module Cmd = struct
 
@@ -86,10 +117,11 @@ module Cmd = struct
   ]
 
   module Mode = struct
-    type t = [`Static | `Trace] [@@deriving sexp]
+    type t = [`Dual | `Static | `Trace] [@@deriving sexp]
     let parser str = match str with
       | "static" -> `Ok `Static
       | "trace" -> `Ok `Trace
+      | "dual"  -> `Ok `Dual
       | _ -> `Error "expected <trace | static>"
     let printer ppf t =
       Format.fprintf ppf "%s" @@ Sexp.to_string (sexp_of_t t)

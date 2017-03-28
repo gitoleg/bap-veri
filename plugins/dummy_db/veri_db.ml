@@ -99,6 +99,7 @@ module Insns = struct
     uns : stat;
     unk : stat;
   }
+
   let empty_stat = Int64.Map.empty
 
   let create last = {
@@ -149,7 +150,6 @@ module Insns = struct
     add f_unk (Map.to_alist t.unk) |>
     Map.to_alist
 
-
 end
 
 open Scheme
@@ -190,11 +190,15 @@ let create name kind =
   let insns = Insns.create insn_id in
   Ok {db = name; wr = []; task_id; insns; kind}
 
-let make_stat_data t =
-  dyn_data_tab,
-  List.fold ~init:[] ~f:(fun acc (id, (suc,uns,unk,und)) ->
-      sprintf "('%Ld', '%Ld', '%d', '%d', '%d', '%d')"
-        t.task_id id suc und uns unk :: acc) (Insns.stat t.insns)
+let write_stat t =
+  let data =
+    List.fold ~init:[] ~f:(fun acc (id, (suc,uns,unk,und)) ->
+        sprintf "('%Ld', '%Ld', '%d', '%d', '%d', '%d')"
+          t.task_id id suc und uns unk :: acc) (Insns.stat t.insns) in
+  open_db t.db >>= fun db ->
+  let res = Tab.insert db dyn_data_tab data in
+  close_db db;
+  res
 
 let write t =
   let cmp (t,_) (t',_) = String.compare (Tab.name t) (Tab.name t') in
@@ -205,7 +209,6 @@ let write t =
                let data = List.concat data in
                let tab = fst @@ List.hd_exn x in
                (tab, data) :: acc)  in
-  let wr = make_stat_data t :: wr in
   open_db t.db >>= fun db ->
   let res = List.fold ~init:(Ok ()) ~f:(fun r (tab, data) ->
       match r with

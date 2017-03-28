@@ -47,6 +47,7 @@ type insn_id
 
 val create : string -> kind -> t Or_error.t
 val write : t -> t Or_error.t
+val write_stat : t -> unit Or_error.t
 
 (** [add_info t task_id kind arch name] *)
 val add_info : t -> ?comp_ops:string -> arch -> string -> t

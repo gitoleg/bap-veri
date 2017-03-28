@@ -4,8 +4,8 @@ open Bap_traces.Std
 open Bap_plugins.Std
 open Bap_future.Std
 
-(** TODO : write a config with ab files  *)
-let veri = "/home/oleg/.opam/4.04.0/lib/bap-veri"
+let veri =
+  let (/) = Filename.concat in Veri_conf.(libdir / pkg)
 
 let check_loaded = function
   | Ok plugins -> ()
@@ -16,13 +16,12 @@ let check_loaded = function
 let load_veri_plugins () =
   let is_veri_plg p =
     String.is_prefix ~prefix:"veri" @@ Plugin.name p in
+  let is_prefixes ~prefixes s =
+    List.exists ~f:(fun x -> String.is_prefix ~prefix:x s) prefixes in
   let is_set p =
     let name = Plugin.name p in
     Array.exists ~f:(fun arg ->
-        let dash_name = "-" ^ name in
-        let dash_dash_name = "--" ^ name in
-        String.is_prefix ~prefix:dash_name arg ||
-        String.is_prefix ~prefix:dash_dash_name arg) Sys.argv in
+        is_prefixes ~prefixes:["-"^name; "--"^name ] arg) Sys.argv in
   let plgs = Plugins.list ~library:[veri] () in
   let plgs = List.filter ~f:is_veri_plg plgs in
   let plgs = List.filter ~f:is_set plgs in
@@ -150,6 +149,7 @@ module Command = struct
 
   let parse argv =
     let argv = filter_argv' argv in
+    (* let argv',_ = Veri_loader.run_and_get_passes ~library:[veri] argv in *)
     printf "filtered \n";
     Array.iter ~f:(fun a -> printf "%s; " a) argv;
     print_newline ();
