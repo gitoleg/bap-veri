@@ -73,7 +73,7 @@ Library output_plugin
 Library lite_plugin
   Path:            plugins/lite
   FindLibName:     veri-plugin-lite
-  InternalModules: Lite, Main, Veri_db
+  InternalModules: Lite_db, Lite_main, Veri_db
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri, sqlite3
