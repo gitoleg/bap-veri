@@ -138,9 +138,6 @@ module Cmd = struct
 
   let () =
     Config.manpage man;
-    Config.when_ready (fun {Config.get=(!)} ->
-        printf "db path is %s\n" !path;
-        main !path !mode)
-
+    Config.when_ready (fun {Config.get=(!)} -> main !path !mode)
 
 end

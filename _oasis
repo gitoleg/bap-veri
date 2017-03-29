@@ -62,10 +62,10 @@ Library show_plugin
   Install:         true
   BuildDepends:    bap-veri, textutils
 
-Library output_plugin
-  Path:            plugins/output
-  FindLibName:     veri-plugin-output
-  InternalModules: Out_main
+Library brief_plugin
+  Path:            plugins/brief
+  FindLibName:     veri-plugin-brief
+  InternalModules: Brief_main
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri
