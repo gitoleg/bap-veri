@@ -256,7 +256,8 @@ let add_insn t bytes insn =
         sprintf "('%Ld', '%s', '%s', '%s', '%s')"
           id (str_of_bytes bytes)
           (Insn.name i) (Insn.asm i) bil in
-    {t with wr = (insn_tab, [data]) :: t.wr; insns}, id
+    let wr = (task_insn_tab, [sprintf "(%Ld, %Ld)" t.task_id id]) :: t.wr in
+    {t with wr = (insn_tab, [data]) :: wr; insns}, id
 
 let add_insn_place t insn_id addr index =
   let addr = Or_error.ok_exn @@ Word.to_int64 addr in

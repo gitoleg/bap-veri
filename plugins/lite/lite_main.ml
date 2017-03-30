@@ -31,47 +31,38 @@ let mem_to_str mem =
           | Ok word -> Seq.Step.Yield (word, Word.succ addr)
           | Error _ -> Seq.Step.Done) in
   let to_int w = ok_exn (Word.to_int w) in
-  Seq.map ~f:(fun w -> sprintf "%02X" @@ to_int w) (deref mem) |>
+  Seq.map ~f:(fun w -> sprintf "%X" @@ to_int w) (deref mem) |>
   Seq.to_list |> String.concat ~sep:" "
 
-let deref mem =
-  Seq.unfold_step ~init:(Memory.min_addr mem)
-    ~f:(fun addr ->
-        match Memory.get ~addr mem with
-        | Ok word -> Seq.Step.Yield (word, Word.succ addr)
-        | Error _ -> Seq.Step.Done)
+let make_bap_proj filename =
+  let input = Bap_project.Input.file ~loader:"llvm"  ~filename in
+  let rooter = Rooter.Factory.find (List.hd_exn @@ Rooter.Factory.list ()) in
+  Bap_project.create ?rooter input
+
+let write_static proj filename db_path =
+  let open Or_error in
+  make_bap_proj filename >>= fun bap ->
+  Veri_db.create db_path `Static >>= fun db ->
+  let insns = Dis.insns @@ Bap_project.disasm bap in
+  let db = Veri_db.add_info db (arch proj) (task_name proj) in
+  let db = Veri_db.add_exec_info db (find_exec_bounds bap) in
+  let db,_ = Seq.fold ~init:(db,0) ~f:(fun (db, ind) (mem, insn) ->
+      let addr = Memory.min_addr mem in
+      let bytes = mem_to_str mem in
+      let db, id = Veri_db.add_insn db bytes (Some insn) in
+      let db = Veri_db.add_insn_place db id addr ind in
+      db, ind + 1) insns in
+  Veri_db.write db
 
 let run_static db_path p =
   match Dict.find (Proj.meta p) Meta.binary with
-  | None ->
-    eprintf "unable to run %s static, path not found\n" name
+  | None -> eprintf "unable to run %s static, path not found\n" name
   | Some bin ->
     let filename = Binary.(bin.path) in
-    let input = Bap_project.Input.file ~loader:"llvm"  ~filename in
-    match Bap_project.create input with
-    | Error er -> eprintf "error in %s %s" name (Error.to_string_hum er)
-    | Ok bap_p ->
-      let bap_p = Project.passes () |>
-                  List.filter ~f:Bap_project.Pass.autorun |>
-                  run_passes bap_p in
-      let insns = Dis.insns @@ Bap_project.disasm bap_p in
-      let db = Veri_db.create db_path `Static in
-      match db with
-      | Error er -> eprintf "error: %s\n" (Error.to_string_hum er)
-      | Ok db ->
-        let db = Veri_db.add_info db (arch p) (task_name p) in
-        let db = Veri_db.add_exec_info db (find_exec_bounds bap_p) in
-        let db,_ = Seq.fold ~init:(db,0) ~f:(fun (acc, ind) (mem, insn) ->
-            let addr = Memory.min_addr mem in
-            let bytes = "" in
-            let db, id = Veri_db.add_insn db bytes (Some insn) in
-            let db = Veri_db.add_insn_place db id addr ind in
-            db, ind + 1) insns in
-        match Veri_db.write db with
-        | Ok _ -> ()
-        | Error er ->
-          eprintf "failed to write to database: %s\n"
-            (Error.to_string_hum er)
+    match write_static p filename db_path with
+    | Ok _ -> ()
+    | Error er ->
+      eprintf "error in static: %s\n" (Error.to_string_hum er)
 
 let with_trace_info db info =
   let open Info in
