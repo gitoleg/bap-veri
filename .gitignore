@@ -9,3 +9,4 @@
 /myocamlbuild.ml
 /_tags
 *META
+lib/veri_conf/veri_conf.ml
