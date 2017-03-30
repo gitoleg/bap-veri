@@ -35,7 +35,7 @@ let run path =
       let tot = !suc + !unk + !und + !uns in
       let rel x = float !x /. float tot *. 100.0 in
       let hd = if !lines = 0 then header else "" in
-      let name = Uri.path (Proj.uri proj) in
+      let name = Filename.basename @@ Uri.path (Proj.uri proj) in
       let s = sprintf "%s%d  %s  %d %.2f %.2f %.2f %.2f\n"
           hd !lines name tot (rel suc) (rel uns) (rel und) (rel unk) in
       Out_channel.output_string out s;

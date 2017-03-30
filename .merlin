@@ -3,8 +3,8 @@ B _build/lib/veri_conf
 B _build/lib/veri_types
 B _build/src
 B _build/plugins/show
-B _build/plugins/output
-B _build/plugins/dummy_db
+B _build/plugins/brief
+B _build/plugins/lite
 B _build/tests
 S lib/veri/
 S lib/veri_conf/
@@ -12,8 +12,8 @@ S lib/veri_types/
 S src
 S plugins
 S plugins/show
-S plugins/output
-S plugins/dummy_db
+S plugins/brief
+S plugins/lite
 S tests
 
 PKG core_kernel
