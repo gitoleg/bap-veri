@@ -54,12 +54,16 @@ let write_static proj filename db_path =
       db, ind + 1) insns in
   Veri_db.write db
 
-let run_static db_path p =
-  match Dict.find (Proj.meta p) Meta.binary with
+let run_static db_path bin_path p =
+  let bin_path = match bin_path with
+    | Some p -> Some p
+    | None -> Option.(
+        Dict.find (Proj.meta p) Meta.binary >>= fun bin ->
+        Some Binary.(bin.path)) in
+  match bin_path with
   | None -> eprintf "unable to run %s static, path not found\n" name
-  | Some bin ->
-    let filename = Binary.(bin.path) in
-    match write_static p filename db_path with
+  | Some bin_path ->
+    match write_static p bin_path db_path with
     | Ok _ -> ()
     | Error er ->
       eprintf "error in static: %s\n" (Error.to_string_hum er)
@@ -93,11 +97,11 @@ let run_with_trace db_path p =
           eprintf "failed to write to database: %s\n"
             (Error.to_string_hum er))
 
-let main path = function
-  | `Static -> Backend.register (run_static path)
+let main path bin_path = function
+  | `Static -> Backend.register (run_static path bin_path)
   | `Trace -> Backend.register (run_with_trace path)
   | `Dual ->
-    Backend.register (run_static path);
+    Backend.register (run_static path bin_path);
     Backend.register (run_with_trace path)
 
 module Cmd = struct
@@ -121,7 +125,11 @@ module Cmd = struct
 
   let mode =
     let doc = "mode" in
-     Config.(param Mode.t "mode" ~doc)
+    Config.(param Mode.t "mode" ~doc)
+
+  let bin_path =
+    let doc = "path to binary, which was used to obtain a trace" in
+    Config.(param (some string) ~default:None "bin_path" ~doc)
 
   let path =
     let doc = "Path to datatabase" in
@@ -129,6 +137,6 @@ module Cmd = struct
 
   let () =
     Config.manpage man;
-    Config.when_ready (fun {Config.get=(!)} -> main !path !mode)
+    Config.when_ready (fun {Config.get=(!)} -> main !path !bin_path !mode)
 
 end
