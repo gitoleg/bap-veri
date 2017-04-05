@@ -36,11 +36,11 @@ Library veri_types
   ByteOpt:         -pp 'ppx-jane -dump-ast'
   BuildDepends:    pcre
 
-Library veri_lite
+Library bap_veri_lite
   Path:            lib/veri_lite
   FindlibName:     bap-veri-lite
-  Modules:         Veri_lite,
-                   Veri_db
+  InternalModules: Veri_lite
+  Modules:         Veri_db
   CompiledObject:  best
   BuildDepends:    bap-veri, sqlite3
 
