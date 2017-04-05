@@ -4,7 +4,7 @@ module Res = Result (** TODO : fix name  *)
 open Bap.Std
 open Bap_traces.Std
 open Veri.Std
-open Veri_lite
+open Veri_lite_internal
 include Self()
 
 (** YYYY-MM-DD HH:MM:SS in UTC *)

@@ -39,7 +39,7 @@ Library veri_types
 Library bap_veri_lite
   Path:            lib/veri_lite
   FindlibName:     bap-veri-lite
-  InternalModules: Veri_lite
+  InternalModules: Veri_lite_internal
   Modules:         Veri_db
   CompiledObject:  best
   BuildDepends:    bap-veri, sqlite3
