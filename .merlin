@@ -1,19 +1,23 @@
 B _build/lib/veri
 B _build/lib/veri_conf
 B _build/lib/veri_types
+B _build/lib/veri_lite
 B _build/src
 B _build/plugins/show
 B _build/plugins/brief
 B _build/plugins/lite
+B _build/plugins/static
 B _build/tests
 S lib/veri/
 S lib/veri_conf/
 S lib/veri_types/
+S lib/veri_lite/
 S src
 S plugins
 S plugins/show
 S plugins/brief
 S plugins/lite
+S plugins/static
 S tests
 
 PKG core_kernel

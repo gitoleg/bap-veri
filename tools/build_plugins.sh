@@ -2,9 +2,9 @@
 
 set -ue
 
-cd plugins
+cd $1
 
-dst=`opam config var lib`/bap-veri
+dst=`opam config var lib`/$2
 
 for plugin in `ls`; do
     if ocamlfind query veri-plugin-$plugin 2>/dev/null
