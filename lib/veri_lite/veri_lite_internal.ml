@@ -5,6 +5,13 @@ open Or_error
 type t = Sqlite3.db
 type db = t
 
+let checked ?cb db action q = match Sqlite3.exec ?cb db q with
+  | Sqlite3.Rc.OK -> Ok ()
+  | rc ->
+    Or_error.error_string @@
+    sprintf "error: can't %s: %s, %s\n" action (Sqlite3.Rc.to_string rc)
+      (Sqlite3.errmsg db)
+
 module Tab = struct
   type t = {
     name : string;
@@ -15,13 +22,6 @@ module Tab = struct
   type traits = Not_null | Key
 
   type col = string * typ * traits list
-
-  let checked ?cb db action q = match Sqlite3.exec ?cb db q with
-    | Sqlite3.Rc.OK -> Ok ()
-    | rc ->
-      Or_error.error_string @@
-      sprintf "error: can't %s: %s, %s\n" action (Sqlite3.Rc.to_string rc)
-        (Sqlite3.errmsg db)
 
   let try_add_traits to_add t traits =
     if to_add then t::traits else traits
@@ -101,6 +101,9 @@ end
 
 (** TODO: add some checks  *)
 let open_db path = Ok (Sqlite3.db_open path)
+
+let start_transaction db = checked db "begin transaction" "BEGIN TRANSACTION"
+let commit_transaction db = checked db "commit transaction" "COMMIT TRANSACTION"
 
 let close_db db =
   if Sqlite3.db_close db then ()

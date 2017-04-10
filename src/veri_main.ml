@@ -92,8 +92,7 @@ module Program (O : Opts) = struct
         match eval_file file rules with
         | Error er ->
           eprintf "error in verification: %s" (Error.to_string_hum er)
-        | Ok () -> ()) files;
-    Backend.on_exit ()
+        | Ok () -> ()) files
 end
 
 module Command = struct

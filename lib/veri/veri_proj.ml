@@ -18,23 +18,14 @@ type t = proj
 
 module Backend = struct
 
-  type info = Veri_exec.Info.t
-  type run = proj -> unit
-
   let processors = Queue.create ()
 
-  let register ?on_exit run =
-    Queue.enqueue processors (run, on_exit)
+  let register run =
+    Queue.enqueue processors run
 
   let process proj =
     Queue.iter
-      ~f:(fun pass -> (fst pass) proj) processors
-
-  let on_exit () =
-    Queue.iter
-      ~f:(fun pass -> match snd pass with
-          | None -> ()
-          | Some f -> f ()) processors
+      ~f:(fun pass -> pass proj) processors
 end
 
 let string_of_error = function

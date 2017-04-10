@@ -90,9 +90,9 @@ module Summary = struct
     let info,_ = Proj.info p in
     Stream.observe info incr
 
-  let on_exit () = Format.printf "Summary:\n%a" print ()
-
-  let register () = Backend.register ~on_exit run
+  let register () =
+    Backend.register run;
+    at_exit (Format.printf "Summary:\n%a" print)
 
 end
 
@@ -163,10 +163,10 @@ module Stat = struct
     let info, _ = Proj.info p in
     Stream.observe info of_info
 
-  let on_exit () =
-    Format.printf "\n%a\n%a\n" print_unsound () print_unknown ()
-
-  let register () = Backend.register ~on_exit run
+  let register () =
+    Backend.register run;
+    at_exit (fun () ->
+        Format.printf "\n%a\n%a\n" print_unsound () print_unknown ())
 
 end
 

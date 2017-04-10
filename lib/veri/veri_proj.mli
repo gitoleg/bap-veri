@@ -7,11 +7,7 @@ type t
 type proj = t
 
 module Backend : sig
-  type info = Veri_exec.Info.t
-  type run = proj -> unit
-
-  val register : ?on_exit:(unit -> unit) -> run -> unit
-  val on_exit : unit -> unit
+  val register : (proj -> unit) -> unit
 end
 
 val create : ?backend:string -> Uri.t -> Veri_rule.t list -> t Or_error.t

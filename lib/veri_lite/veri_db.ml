@@ -155,13 +155,11 @@ end
 open Scheme
 
 type kind = [ `Trace | `Static ] [@@deriving sexp]
-type data = string list
-type write = Tab.t * data
 type task_id = id
 
 type task = {
-  db : string;
-  wr : write list;
+  name : string;
+  conn : db;
   task_id : id;
   kind    : kind;
   insns   : Insns.t;
@@ -186,38 +184,19 @@ let create name kind =
   get_available_id db task_tab >>= fun task_id ->
   get_available_id db insn_tab >>= fun insn_id ->
   add_task db task_id >>= fun () ->
-  close_db db;
   let insns = Insns.create insn_id in
-  Ok {db = name; wr = []; task_id; insns; kind}
+  Ok {name; conn = db; task_id; insns; kind}
 
 let write_stat t =
   let data =
     List.fold ~init:[] ~f:(fun acc (id, (suc,uns,unk,und)) ->
         sprintf "('%Ld', '%Ld', '%d', '%d', '%d', '%d')"
           t.task_id id suc und uns unk :: acc) (Insns.stat t.insns) in
-  open_db t.db >>= fun db ->
-  let res = Tab.insert db dyn_data_tab data in
-  close_db db;
-  res
+  Tab.insert t.conn dyn_data_tab data
 
-let write t =
-  let cmp (t,_) (t',_) = String.compare (Tab.name t) (Tab.name t') in
-  let wr = List.sort ~cmp t.wr |>
-           List.group ~break:(fun (t,_) (t',_) -> t <> t') |>
-           List.fold ~init:[] ~f:(fun acc x ->
-               let data = List.map ~f:snd x in
-               let data = List.concat data in
-               let tab = fst @@ List.hd_exn x in
-               (tab, data) :: acc)  in
-  open_db t.db >>= fun db ->
-  let res = List.fold ~init:(Ok ()) ~f:(fun r (tab, data) ->
-      match r with
-      | Ok () -> Tab.insert db tab data
-      | er -> er) wr in
-  close_db db;
-  match res with
-  | Ok () -> Ok {t with wr = []}
-  | Error er -> Error er
+let write t = function
+  | `Start -> start_transaction t.conn
+  | `End -> commit_transaction t.conn
 
 let add_info t ?(comp_ops="") arch name =
   let data = sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s', '%s')"
@@ -228,14 +207,14 @@ let add_info t ?(comp_ops="") arch name =
       bap_version
       (Arch.to_string arch)
       comp_ops in
-  {t with wr = (info_tab, [data]) :: t.wr}
+  Tab.insert t.conn info_tab [data]
 
 let add_dyn_info t ?(obj_ops="") rules  =
   let policy = sql_quote @@ List.fold ~init:"" ~f:(fun s r ->
       sprintf "%s%s; " s (Rule.to_string r)) rules in
   let data =
     sprintf "('%Ld', '%s', '%s')" t.task_id obj_ops policy in
-  {t with wr = (dyn_info_tab, [data]) :: t.wr }
+  Tab.insert t.conn dyn_info_tab [data]
 
 let str_of_bytes b =
   String.fold b ~init:[]
@@ -244,7 +223,7 @@ let str_of_bytes b =
 
 let add_insn t bytes insn =
   match Insns.id t.insns bytes with
-  | Some id -> t, id
+  | Some id -> Ok (t, id)
   | None ->
     let id, insns = Insns.add t.insns bytes in
     let data = match insn with
@@ -256,17 +235,19 @@ let add_insn t bytes insn =
         sprintf "('%Ld', '%s', '%s', '%s', '%s')"
           id (str_of_bytes bytes)
           (Insn.name i) (Insn.asm i) bil in
-    let wr = (task_insn_tab, [sprintf "(%Ld, %Ld)" t.task_id id]) :: t.wr in
-    {t with wr = (insn_tab, [data]) :: wr; insns}, id
+    let task_data = sprintf "(%Ld, %Ld)" t.task_id id in
+    Tab.insert t.conn insn_tab [data] >>= fun () ->
+    Tab.insert t.conn task_insn_tab [task_data] >>= fun () ->
+    Ok ({t with insns}, id)
 
 let add_insn_place t insn_id addr index =
   let addr = Or_error.ok_exn @@ Word.to_int64 addr in
   let data = sprintf "('%Ld', '%Ld', '%d', '%Ld')"
       t.task_id insn_id index addr in
-  {t with wr = (insn_place_tab, [data]) :: t.wr;}
+  Tab.insert t.conn insn_place_tab [data]
 
 let add_insn_dyn t insn_id res =
-  {t with insns = Insns.add_result t.insns insn_id res}
+  Ok {t with insns = Insns.add_result t.insns insn_id res}
 
 let add_exec_info t ranges =
   let to_int64 x = Or_error.ok_exn @@ Word.to_int64 x in
@@ -275,4 +256,6 @@ let add_exec_info t ranges =
           let s = sprintf "('%Ld', '%d', '%Ld', '%Ld')"
               t.task_id id (to_int64 min) (to_int64 max) in
           s :: data, id + 1) ranges in
-  {t with wr = (bin_info_tab, data) :: t.wr}
+  Tab.insert t.conn bin_info_tab data
+
+let close t = close_db t.conn

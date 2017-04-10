@@ -117,11 +117,12 @@ class context policy trace = object(self:'s)
     val veri_events : value list = []
     val info_stream = Stream.create ()
     val finish = Future.create ()
+    val mutable finished = false
     val pos = 0
 
     method! next_event =
       let next = super#next_event in
-      if next = None then Promise.fulfill (snd finish) ();
+      if next = None then finished <- true;
       next
 
     method cleanup =
@@ -147,6 +148,8 @@ class context policy trace = object(self:'s)
             | diff -> add_unsound veri_events name diff in
       let i = Info.create (Set.to_list real) (Set.to_list ours) veri in
       Signal.send (snd info_stream) i;
+      if finished then
+        Promise.fulfill (snd finish) ();
       self#cleanup
 
     method discard_event: (event -> bool) -> 's = fun f ->

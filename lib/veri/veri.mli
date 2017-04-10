@@ -209,9 +209,6 @@ module Std : sig
   type proj = Proj.t
 
   module Backend : sig
-    type run = proj -> unit
-
-    val register : ?on_exit:(unit -> unit) -> run -> unit
-    val on_exit : unit -> unit
+    val register : (proj -> unit) -> unit
   end
 end

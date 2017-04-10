@@ -21,3 +21,6 @@ end
 
 val open_db  : string -> t Or_error.t
 val close_db : t -> unit
+
+val start_transaction : t -> unit Or_error.t
+val commit_transaction : t -> unit Or_error.t
