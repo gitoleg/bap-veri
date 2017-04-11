@@ -4,9 +4,6 @@ open Bap_traces.Std
 open Bap_plugins.Std
 open Bap_future.Std
 
-let veri =
-  let (/) = Filename.concat in Veri_conf.(libdir / pkg)
-
 let check_loaded = function
   | Ok plugins -> ()
   | Error (path, er) ->
@@ -14,16 +11,13 @@ let check_loaded = function
       path (Error.to_string_hum er)
 
 let load_veri_plugins () =
-  let is_veri_plg p =
-    String.is_prefix ~prefix:"veri" @@ Plugin.name p in
   let is_prefixes ~prefixes s =
     List.exists ~f:(fun x -> String.is_prefix ~prefix:x s) prefixes in
   let is_set p =
     let name = Plugin.name p in
     Array.exists ~f:(fun arg ->
         is_prefixes ~prefixes:["-"^name; "--"^name ] arg) Sys.argv in
-  let plgs = Plugins.list ~library:[veri] () in
-  let plgs = List.filter ~f:is_veri_plg plgs in
+  let plgs = Plugins.list ~query:["veri"] () in
   let plgs = List.filter ~f:is_set plgs in
   List.fold ~init:[] ~f:(fun a p ->
       match Plugin.load p with
@@ -32,7 +26,7 @@ let load_veri_plugins () =
   |> Result.all |> check_loaded
 
 let load_bap_plugins () =
-  Plugins.load () |> Result.all |> check_loaded
+  Plugins.load ~query:["core"] () |> Result.all |> check_loaded
 
 let () = load_bap_plugins ()
 let () = load_veri_plugins ()
@@ -125,7 +119,7 @@ module Command = struct
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
-    let known_plugins = Plugins.list ~library:[veri] () |> List.map ~f:Plugin.name in
+    let known_plugins = Plugins.list () |> List.map ~f:Plugin.name in
     let known_names = known_passes @ known_plugins in
     let prefixes = List.map known_names  ~f:(fun name -> "--" ^ name) in
     let is_prefix str prefix = String.is_prefix ~prefix str in

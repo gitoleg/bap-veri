@@ -1,2 +1,0 @@
-let libdir = "$libdir"
-let pkg = "$pkg_name"

@@ -44,23 +44,12 @@ Library bap_veri_lite
   CompiledObject:  best
   BuildDepends:    bap-veri, sqlite3
 
-Library conf
-  Path:            lib/veri_conf
-  FindlibParent:   bap-veri
-  FindLibName:     conf
-  Modules:         Veri_conf
-  CompiledObject:  best
-  Install:         false
-
-FilesAB:  lib/veri_conf/veri_conf.ml.ab
-
 Executable "bap-veri"
   Path:           src
   MainIs:         veri_main.ml
   CompiledObject: best
   Install:        true
-  BuildDepends:   bap.plugins, bap-veri, bap-veri.conf,
-                  cmdliner, findlib.dynload
+  BuildDepends:   bap.plugins, bap-veri, cmdliner, findlib.dynload
 
 Library show_plugin
   Path:            plugins/show
@@ -87,7 +76,7 @@ Library lite_plugin
   BuildDepends:    bap-veri, bap-veri-lite
 
 Library static_plugin
-  Path:            bap_plugins/static
+  Path:            plugins/static
   FindLibName:     veri-plugin-static
   InternalModules: Static_main
   CompiledObject:  best

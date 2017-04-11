@@ -2,28 +2,27 @@
 
 set -ue
 
-cd $1
+cd plugins
 
-dst=`opam config var lib`/$2
-
-for plugin in `ls`; do
+for plugin in `ls .`; do
     if ocamlfind query veri-plugin-$plugin 2>/dev/null
     then
-        plugin_name=veri_$plugin
-        touch $plugin_name.ml
-        bapbuild -package veri-plugin-$plugin $plugin_name.plugin
-        bapbundle update -desc "`ocamlfind query -format "%D" veri-plugin-$plugin`" $plugin_name.plugin
+        echo "we are here"
+        touch $plugin.ml
+        bapbuild -package veri-plugin-$plugin $plugin.plugin
+        DESC=`ocamlfind query -format "%D" veri-plugin-$plugin`
+        bapbundle update -desc "$DESC" -tags "veri" $plugin.plugin
         if [ -f $plugin/resources ]; then
             cd $plugin
             for line in `cat resources`; do
-                bapbundle update -add-resources $line ../$plugin_name.plugin
+                bapbundle update -add-resources $line ../$plugin.plugin
             done
             cd ..
         fi
-        echo "bapbundle install $plugin_name.plugin"
-        bapbundle install -destdir $dst $plugin_name.plugin
+        echo "bapbundle install $plugin.plugin"
+        bapbundle install $plugin.plugin
         bapbuild -clean
-        rm $plugin_name.ml
+        rm $plugin.ml
     fi
 done
 
