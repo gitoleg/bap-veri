@@ -76,7 +76,7 @@ Library lite_plugin
   BuildDepends:    bap-veri, bap-veri-lite
 
 Library static_plugin
-  Path:            plugins/static
+  Path:            bap_plugins/static
   FindLibName:     veri-plugin-static
   InternalModules: Static_main
   CompiledObject:  best

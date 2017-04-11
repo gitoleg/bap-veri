@@ -2,16 +2,21 @@
 
 set -ue
 
-cd plugins
+cd $1
+
+tags=$2
 
 for plugin in `ls .`; do
     if ocamlfind query veri-plugin-$plugin 2>/dev/null
     then
-        echo "we are here"
         touch $plugin.ml
         bapbuild -package veri-plugin-$plugin $plugin.plugin
-        DESC=`ocamlfind query -format "%D" veri-plugin-$plugin`
-        bapbundle update -desc "$DESC" -tags "veri" $plugin.plugin
+        desc=`ocamlfind query -format "%D" veri-plugin-$plugin`
+        if [ -z "$tags" ]; then
+            bapbundle update -desc "$desc" $plugin.plugin
+        else
+            bapbundle update -desc "$desc" -tags $tags $plugin.plugin
+        fi
         if [ -f $plugin/resources ]; then
             cd $plugin
             for line in `cat resources`; do
