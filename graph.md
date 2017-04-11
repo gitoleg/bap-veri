@@ -1,2 +1,7 @@
-![arm errors]
-(https://github.com/gitoleg/bil-verification/graph/arm/armv7:_errors_structure.png)
+![]
+(/graph/arm/armv7:_errors_structure.png?raw=true)
+
+
+
+
+///https://github.com/gitoleg/bil-/..verification/blob/graphs/graph/arm/armv7:_errors_structure.png)
