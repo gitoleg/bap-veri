@@ -7,74 +7,91 @@ Maintainers:  Ivan Gotovchits <ivg@ieee.org>,
               Oleg Kamenkov <forown@yandex.ru>
 License:      MIT
 Copyrights:   (C) 2016 Carnegie Mellon University
-Plugins:      META (0.4), DevFiles (0.4)
+Plugins:      META (0.4)
 BuildTools:   ocamlbuild
-BuildDepends: ppx_jane, core_kernel, bap, bap-traces
+BuildDepends: ppx_jane, core_kernel, bap, bap-traces, bap-future, threads
 
-Library veri
-  Path:           lib/veri
-  FindLibName:    bap-veri
-  Modules:        Veri,
-                  Veri_chunki,
-                  Veri_result,
-                  Veri_info,
-                  Veri_numbers,
-                  Veri_policy,
-                  Veri_rule,
-                  Veri_traci
-  CompiledObject: best
-  Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   pcre, textutils, threads
+Library bap-veri
+  Path:            lib/veri
+  FindLibName:     bap-veri
+  Modules:         Veri
+  InternalModules: Veri_proj
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri.types
 
-Library veri_db
-  Path:           lib/veri_db
-  FindLibName:    bap-veri-db
-  Modules:        Veri_db
-  Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   bap-veri, sqlite3
+Library veri_types
+  Path:            lib/veri_types
+  FindlibParent:   bap-veri
+  FindlibName:     types
+  InternalModules: Veri_chunki,
+                   Veri_exec,
+                   Veri_policy,
+                   Veri_result,
+                   Veri_rule,
+                   Veri_traci,
+                   Veri_types
+  CompiledObject:  best
+  NativeOpt:       -pp 'ppx-jane -dump-ast'
+  ByteOpt:         -pp 'ppx-jane -dump-ast'
+  BuildDepends:    pcre
 
-Library veri_test
-  Path:           tests
-  Build$:         flag(tests)
-  Install:        false
-  CompiledObject: best
-  Modules:        Veri_test,
-                  Veri_policy_test,
-                  Veri_rule_test,
-                  Veri_stat_test
-  BuildDepends:   bap-veri, oUnit
+Library bap_veri_lite
+  Path:            lib/veri_lite
+  FindlibName:     bap-veri-lite
+  InternalModules: Veri_lite_internal
+  Modules:         Veri_db
+  CompiledObject:  best
+  BuildDepends:    bap-veri, sqlite3
 
 Executable "bap-veri"
   Path:           src
   MainIs:         veri_main.ml
   CompiledObject: best
   Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner
+  BuildDepends:   bap.plugins, bap-veri, cmdliner, findlib.dynload
 
-Executable run_tests
-  Path:           tests
-  MainIs:         run_tests.ml
-  Install:        false
-  Build$:         flag(tests)
-  CompiledObject: best
-  BuildDepends:   bap.plugins, veri_test, oUnit, findlib.dynload
+Library show_plugin
+  Path:            plugins/show
+  FindLibName:     veri-plugin-show
+  InternalModules: Show_main
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri, textutils
 
-Test veri_test
-  TestTools:      run_tests
-  Run$:           flag(tests)
-  Command:        $run_tests -runner sequential
+Library brief_plugin
+  Path:            plugins/brief
+  FindLibName:     veri-plugin-brief
+  InternalModules: Brief_main
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri
 
-Executable "veri-task"
-  Path:           src
-  MainIs:         veri_task.ml
-  CompiledObject: best
-  Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
-  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, bap-veri-db, cmdliner
+Library lite_plugin
+  Path:            plugins/lite
+  FindLibName:     veri-plugin-lite
+  InternalModules: Lite_main
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri, bap-veri-lite
+
+Library static_plugin
+  Path:            plugins/static
+  FindLibName:     veri-plugin-static
+  InternalModules: Static_main
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-veri, bap-veri-lite
+
+# Executable run_tests
+#   Path:           tests
+#   MainIs:         run_tests.ml
+#   Install:        false
+#   Build$:         flag(tests)
+#   CompiledObject: best
+#   BuildDepends:   bap.plugins, veri_test, oUnit, findlib.dynload
+
+# Test veri_test
+#   TestTools:      run_tests
+#   Run$:           flag(tests)
+#   Command:        $run_tests -runner sequential
