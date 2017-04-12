@@ -2,7 +2,7 @@
 
            info                                dynamic_data
  +-------------------+                    +-----------------------+
- | * Id_task  : Int  |<---+               | * Id_task      : Int  |<--+
+ | * Id       : Int  |<---+               | * Id_task      : Int  |<--+
  |-------------------|    |               | * Id_insn      : Int  |<--|
  |   Kind     : Text |    |               |-----------------------|   |
  |   Name     : Text |    |               |   Successful   : Int  |   |
@@ -18,7 +18,7 @@
                           |  +------------+  +<<| * Id_insn : Int |>--+------->| * Id_insn : Int |
       dynamic_info        |                  |  +-----------------+            | * Pos     : Int |
  +-------------------+    |                  |                                 |-----------------|
- | * Id_task  : Int  |<---+                  |                                 |   Addr    : Int |
+ | * Id       : Int  |<---+                  |                                 |   Addr    : Int |
  |-------------------|    |                  |         insn                    +-----------------+
  |   Obj_ops  : Text |    |                  |  +-----------------+
  |   Policy   : Text |    |                  +->| * Id     : Int  |

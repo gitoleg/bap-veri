@@ -70,6 +70,6 @@ module Cmd = struct
   let () =
     Config.manpage man;
     Config.when_ready (fun {Config.get=(!)} ->
-        Project.register_pass' ~autorun:true ~name (main !path !bin_name))
+        Project.register_pass' (main !path !bin_name))
 
 end
