@@ -102,8 +102,6 @@ module Command = struct
     let doc = "File with policy description" in
     Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
 
-  let make_flag ~doc ~name = Arg.(value & flag & info [name] ~doc)
-
   let info =
     let doc = "Bil verification tool" in
     let man = [
@@ -113,7 +111,7 @@ module Command = struct
     ] in
     Term.info "veri" ~doc ~man
 
-  let create a b  = Veri_options.Fields.create a b
+  let create a b = Veri_options.Fields.create a b
 
   let run_t = Term.(const create $ rules $ filename )
 

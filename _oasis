@@ -58,6 +58,7 @@ Library show_plugin
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri, textutils
+  XMETAExtraLines: tags="veri"
 
 Library brief_plugin
   Path:            plugins/brief
@@ -66,6 +67,7 @@ Library brief_plugin
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri
+  XMETAExtraLines: tags="veri"
 
 Library lite_plugin
   Path:            plugins/lite
@@ -74,6 +76,7 @@ Library lite_plugin
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri, bap-veri-lite
+  XMETAExtraLines: tags="veri"
 
 Library static_plugin
   Path:            bap_plugins/static
@@ -82,6 +85,7 @@ Library static_plugin
   CompiledObject:  best
   Install:         true
   BuildDepends:    bap-veri, bap-veri-lite
+  XMETAExtraLines: tags="core, veri"
 
 # Executable run_tests
 #   Path:           tests
