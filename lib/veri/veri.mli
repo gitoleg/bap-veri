@@ -200,10 +200,11 @@ module Std : sig
     val create : ?backend:string -> Uri.t -> Rule.t list -> t Or_error.t
     val run : t -> unit Or_error.t
 
-    val uri   : t -> Uri.t
-    val meta  : t -> dict
-    val info  : t -> Info.t stream * unit Future.t
-    val rules : t -> Rule.t list
+    val uri    : t -> Uri.t
+    val meta   : t -> dict
+    val info   : t -> Info.t stream
+    val rules  : t -> Rule.t list
+    val finish : t -> unit Future.t
   end
 
   type proj = Proj.t

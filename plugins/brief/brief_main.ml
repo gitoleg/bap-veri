@@ -40,7 +40,8 @@ let run path =
           hd !lines name tot (rel suc) (rel uns) (rel und) (rel unk) in
       Out_channel.output_string out s;
       Out_channel.close out in
-    let infos, finish = Proj.info proj in
+    let infos = Proj.info proj in
+    let finish = Proj.finish proj in
     Stream.observe infos of_info;
     Future.upon finish (fun () -> print (); incr lines)
 

@@ -70,5 +70,6 @@ let run t =
 
 let uri t = t.uri
 let meta t = Trace.meta t.trace
-let info t = t.context#info
+let info t = fst t.context#info
 let rules t = Veri_policy.rules t.policy
+let finish t = snd t.context#info

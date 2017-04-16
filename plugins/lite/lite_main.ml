@@ -8,17 +8,14 @@ open Veri.Std
 include Self()
 
 let arch p = Option.value_exn (Dict.find (Proj.meta p) Meta.arch)
-let task_name p = Filename.basename @@ Uri.to_string @@ Proj.uri p
+let task_name p = Filename.basename @@ Uri.path @@ Proj.uri p
 
 let db_error er =
   eprintf "failed to write to database %s\n" (Error.to_string_hum er)
 
-let x = ref false
-
 let with_trace_info db info =
   let open Info in
   let dbr =
-    if !x then printf "we are here\n";
     Veri_db.add_insn db (bytes info) (insn info) >>= fun (db, id) ->
     Veri_db.add_insn_place db id (addr info) (index info) >>= fun () ->
     Veri_db.add_insn_dyn db id (error info) >>= fun db ->
@@ -30,7 +27,8 @@ let with_trace_info db info =
     Some db, db
 
 let run_with_trace db_path p =
-  let info, fut = Proj.info p in
+  let info = Proj.info p in
+  let fut = Proj.finish p in
   let name = task_name p in
   let db =
     Veri_db.create db_path `Trace >>= fun db ->
@@ -48,7 +46,6 @@ let run_with_trace db_path p =
         let res = Or_error.(
             Veri_db.write_stat db >>= fun () ->
             Veri_db.write db `End) in
-        x := true;
         Veri_db.close db;
         match res with
         | Ok () -> ()

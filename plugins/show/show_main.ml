@@ -40,7 +40,7 @@ module Report = struct
     Stream.observe infos print
 
   let run p =
-    let info, _ = Proj.info p in
+    let info = Proj.info p in
     Format.printf "%a\n" pp_report info
 
   let register () = Backend.register run
@@ -87,7 +87,7 @@ module Summary = struct
          "abs", (fun (_,_,x) -> Printf.sprintf "%d" x);] ps
 
   let run p =
-    let info,_ = Proj.info p in
+    let info = Proj.info p in
     Stream.observe info incr
 
   let register () =
@@ -160,7 +160,7 @@ module Stat = struct
       | _ -> ()
 
   let run p =
-    let info, _ = Proj.info p in
+    let info  = Proj.info p in
     Stream.observe info of_info
 
   let register () =
