@@ -17,6 +17,7 @@ module Tab = struct
   type typ = Int | Text
   type traits = Not_null | Key | Unique
   type col = string * typ * traits list
+  type where = (string * string) list
 
   type t = {
     name : string;
@@ -140,6 +141,8 @@ module Tab = struct
     match !r with
     | None -> Ok None
     | Some x -> Ok (Some x)
+
+   let last_inserted = Sqlite3.last_insert_rowid
 
 end
 

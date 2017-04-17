@@ -102,15 +102,9 @@ type task = {
 
 type t = task
 
-let get_available_id db ?(id="Id") tab =
-  Tab.get_max db tab id >>= fun s ->
-  match s with
-  | None   -> Ok Int64.zero
-  | Some s -> Ok (Int64.of_string s |> Int64.succ)
-
-let add_task db id =
-  let data = sprintf "('%Ld')" id in
-  Tab.insert db task_tab [data]
+let add_task db  =
+  Tab.insert db task_tab ["(NULL)"] >>= fun () ->
+  Ok (Tab.last_inserted db )
 
 let write' conn = function
   | `Start -> start_transaction conn
@@ -122,9 +116,7 @@ let create name ?(commit = `Before_close) kind =
   open_db name >>= fun db ->
   List.map tables ~f:(Tab.add_if_absent db) |>
   Result.all_ignore >>= fun _ ->
-  get_available_id db task_tab >>= fun task_id ->
-  get_available_id db insn_tab >>= fun insn_id ->
-  add_task db task_id >>= fun () ->
+  add_task db >>= fun task_id ->
   write' db `Start >>= fun () ->
   Ok {name; conn = db; task_id; kind; commit; counter = 0;}
 
