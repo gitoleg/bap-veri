@@ -57,7 +57,7 @@ let bytes = Value.Tag.register ~name:"bytes"
 
 let error = Value.Tag.register ~name:"error"
     ~uuid:"9189054d-6e7c-480e-8a92-a211440bc134"
-    (module Veri_result.Error)
+    (module Veri_error)
 
 let insn = Value.Tag.register ~name:"instruction"
     ~uuid:"e0e96dd9-204c-4a5b-bdff-d54de9d2e725"

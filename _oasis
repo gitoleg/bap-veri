@@ -26,8 +26,8 @@ Library veri_types
   FindlibName:     types
   InternalModules: Veri_chunki,
                    Veri_exec,
+                   Veri_error,
                    Veri_policy,
-                   Veri_result,
                    Veri_rule,
                    Veri_traci,
                    Veri_types
@@ -42,6 +42,7 @@ Library bap_veri_lite
   InternalModules: Veri_lite_internal
   Modules:         Veri_db
   CompiledObject:  best
+  Install:         true
   BuildDepends:    bap-veri, sqlite3
 
 Executable "bap-veri"

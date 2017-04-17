@@ -48,11 +48,13 @@ module Program (O : Opts) = struct
   open Veri_options
   open O
 
+
   let eval_file file rules =
     let open Or_error in
     let uri = Uri.of_string ("file:" ^ file) in
     Proj.create uri rules >>= fun p ->
     Proj.run p
+
 
   let read_dir path =
     let dir = Unix.opendir path in
@@ -76,7 +78,13 @@ module Program (O : Opts) = struct
     | None -> []
     | Some p -> Rule.Reader.of_path p
 
+  let check_path p =
+    if not (Sys.file_exists p) then
+      let () = eprintf "Error: file %s not exists!\n" p in
+      exit 1
+
   let main () =
+    check_path options.path;
     let rules = read_rules options.rules in
     let files =
       if Sys.is_directory options.path then (read_dir options.path)

@@ -1,6 +1,5 @@
 open Core_kernel.Std
 open Or_error
-module Res = Result (** TODO : fix name  *)
 open Bap.Std
 open Bap_traces.Std
 open Veri.Std
@@ -59,7 +58,7 @@ module Scheme = struct
 
   let insn_tab = Tab.(create "insn" [
       col ~key:true ~not_null:true "Id" Int;
-      col ~not_null:true "Bytes" Text;
+      col ~not_null:true ~unique:true "Bytes" Text;
       col "Name" Text;
       col "Asm" Text;
       col "Bil" Text;
@@ -87,82 +86,18 @@ end
 type id = Int64.t
 type insn_id = id
 
-module Insns = struct
-
-  type stat = int Int64.Map.t
-
-  type t = {
-    last  : id;
-    insns : id String.Map.t;
-    und : stat;
-    suc : stat;
-    uns : stat;
-    unk : stat;
-  }
-
-  let empty_stat = Int64.Map.empty
-
-  let create last = {
-    last;
-    insns = String.Map.empty;
-    und = empty_stat;
-    suc = empty_stat;
-    unk = empty_stat;
-    uns = empty_stat;
-  }
-
-  let add ({last; insns} as t) bytes =
-    match Map.find insns bytes with
-    | Some id -> id, t
-    | None ->
-      let id = Int64.succ t.last in
-      let insns = Map.add insns bytes id in
-      id, {t with insns; last = id}
-
-  let exists t = Map.mem t.insns
-
-  let id t bytes = Map.find t.insns bytes
-
-  let incr id nums = Map.change nums id ~f:(function
-      | None -> Some 1
-      | Some x -> Some (x + 1))
-
-  let add_result t id = function
-    | None -> {t with suc = incr id t.suc}
-    | Some (er, _) -> match er with
-      | `Unsound_sema -> {t with uns = incr id t.uns}
-      | `Unknown_sema -> {t with und = incr id t.und}
-      | `Disasm_error -> {t with unk = incr id t.unk}
-
-  let stat t =
-    let add f items all =
-      List.fold items ~init:all ~f:(fun all (id,value) ->
-      Map.change all id (function
-          | None -> Some (f (0,0,0,0) value)
-          | Some x -> Some (f x value))) in
-    let f_suc (_,x,y,z) value = value,x,y,z in
-    let f_uns (x,_,y,z) value = x,value,y,z in
-    let f_unk (x,y,_,z) value = x,y,value,z in
-    let f_und (x,y,z,_) value = x,y,z,value in
-    add f_suc (Map.to_alist t.suc) Int64.Map.empty |>
-    add f_uns (Map.to_alist t.uns) |>
-    add f_und (Map.to_alist t.und) |>
-    add f_unk (Map.to_alist t.unk) |>
-    Map.to_alist
-
-end
-
 open Scheme
 
 type kind = [ `Trace | `Static ] [@@deriving sexp]
 type task_id = id
-
+type commit = [ `Before_close | `Every of int ]
 type task = {
   name : string;
   conn : db;
   task_id : id;
   kind    : kind;
-  insns   : Insns.t;
+  commit  : commit;
+  counter : int;
 }
 
 type t = task
@@ -177,26 +112,21 @@ let add_task db id =
   let data = sprintf "('%Ld')" id in
   Tab.insert db task_tab [data]
 
-let create name kind =
+let write' conn = function
+  | `Start -> start_transaction conn
+  | `End -> commit_transaction conn
+
+let write t act = write' t.conn act
+
+let create name ?(commit = `Before_close) kind =
   open_db name >>= fun db ->
   List.map tables ~f:(Tab.add_if_absent db) |>
-  Res.all_ignore >>= fun _ ->
+  Result.all_ignore >>= fun _ ->
   get_available_id db task_tab >>= fun task_id ->
   get_available_id db insn_tab >>= fun insn_id ->
   add_task db task_id >>= fun () ->
-  let insns = Insns.create insn_id in
-  Ok {name; conn = db; task_id; insns; kind}
-
-let write_stat t =
-  let data =
-    List.fold ~init:[] ~f:(fun acc (id, (suc,uns,unk,und)) ->
-        sprintf "('%Ld', '%Ld', '%d', '%d', '%d', '%d')"
-          t.task_id id suc und uns unk :: acc) (Insns.stat t.insns) in
-  Tab.insert t.conn dyn_data_tab data
-
-let write t = function
-  | `Start -> start_transaction t.conn
-  | `End -> commit_transaction t.conn
+  write' db `Start >>= fun () ->
+  Ok {name; conn = db; task_id; kind; commit; counter = 0;}
 
 let add_info t ?(comp_ops="") arch name =
   let data = sprintf "('%Ld', '%s', '%s', '%s', '%s', '%s', '%s')"
@@ -221,24 +151,38 @@ let str_of_bytes b =
     ~f:(fun s c -> (sprintf "%X" @@ Char.to_int c) :: s) |>
   List.rev |> String.concat ~sep:" "
 
+let try_commit t =
+  match t.commit with
+  | `Before_close -> Ok t
+  | `Every n when t.counter < n ->
+    Ok {t with counter = t.counter + 1}
+  | _ ->
+    write t `End >>= fun () ->
+    write t `Start >>= fun () ->
+    Ok {t with counter = 0}
+
 let add_insn t bytes insn =
-  match Insns.id t.insns bytes with
-  | Some id -> Ok (t, id)
-  | None ->
-    let id, insns = Insns.add t.insns bytes in
-    let data = match insn with
-      | None ->
-        sprintf "('%Ld', '%s', '%s', '%s', '%s')"
-          id (str_of_bytes bytes) "" "" ""
-      | Some i ->
-        let bil = Sexp.to_string (Bil.sexp_of_t @@ Insn.bil i) in
-        sprintf "('%Ld', '%s', '%s', '%s', '%s')"
-          id (str_of_bytes bytes)
-          (Insn.name i) (Insn.asm i) bil in
+  let bytes = str_of_bytes bytes in
+  let data =
+    match insn with
+    | None -> sprintf "(NULL, '%s', '%s', '%s', '%s')" bytes "" "" ""
+    | Some i ->
+      let bil = Sexp.to_string (Bil.sexp_of_t @@ Insn.bil i) in
+      sprintf "(NULL, '%s', '%s', '%s', '%s')"
+        bytes (Insn.name i) (Insn.asm i) bil in
+  Tab.insert ~ignore_:true t.conn insn_tab [data] >>= fun () ->
+  Tab.select t.conn insn_tab ~where:["Bytes", bytes] ["Id"] >>= fun id ->
+  match id with
+  | None -> Or_error.error_string "didn't inserted data in insn-tab"
+  | Some id ->
+    let id = Int64.of_string id in
     let task_data = sprintf "(%Ld, %Ld)" t.task_id id in
-    Tab.insert t.conn insn_tab [data] >>= fun () ->
-    Tab.insert t.conn task_insn_tab [task_data] >>= fun () ->
-    Ok ({t with insns}, id)
+    let dyn_data =
+      sprintf "('%Ld', '%Ld', '0', '0', '0', '0')" t.task_id id in
+    Tab.insert ~ignore_:true t.conn task_insn_tab [task_data] >>= fun () ->
+    Tab.insert ~ignore_:true t.conn dyn_data_tab [dyn_data] >>= fun () ->
+    try_commit t >>= fun t ->
+    Ok (t, id)
 
 let add_insn_place t insn_id addr index =
   let addr = Or_error.ok_exn @@ Word.to_int64 addr in
@@ -247,7 +191,16 @@ let add_insn_place t insn_id addr index =
   Tab.insert t.conn insn_place_tab [data]
 
 let add_insn_dyn t insn_id res =
-  Ok {t with insns = Insns.add_result t.insns insn_id res}
+  let field = match res with
+    | None -> "Successful"
+    | Some (er, _) -> match er with
+      | `Unsound_sema -> "Unsound_sema"
+      | `Unknown_sema -> "Unknown_sema"
+      | `Disasm_error -> "Undisasmed" in
+  let where =
+    ["Id_task", sprintf "%Ld" t.task_id; "Id_insn", sprintf "%Ld" insn_id] in
+  Tab.increment t.conn dyn_data_tab field ~where >>= fun () ->
+  Ok t
 
 let add_exec_info t ranges =
   let to_int64 x = Or_error.ok_exn @@ Word.to_int64 x in
@@ -258,4 +211,7 @@ let add_exec_info t ranges =
           s :: data, id + 1) ranges in
   Tab.insert t.conn bin_info_tab data
 
-let close t = close_db t.conn
+let close t =
+  write t `End >>= fun () ->
+  close_db t.conn;
+  Ok ()

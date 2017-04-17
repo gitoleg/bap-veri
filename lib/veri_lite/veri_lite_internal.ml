@@ -13,15 +13,16 @@ let checked ?cb db action q = match Sqlite3.exec ?cb db q with
       (Sqlite3.errmsg db)
 
 module Tab = struct
+
+  type typ = Int | Text
+  type traits = Not_null | Key | Unique
+  type col = string * typ * traits list
+
   type t = {
     name : string;
     desc : string;
+    cols : col list;
   }
-
-  type typ = Int | Text
-  type traits = Not_null | Key
-
-  type col = string * typ * traits list
 
   let try_add_traits to_add t traits =
     if to_add then t::traits else traits
@@ -30,18 +31,30 @@ module Tab = struct
     | Int -> "INTEGER"
     | Text -> "TEXT"
 
-  let string_of_traits = function
-    | Not_null -> "NOT NULL"
-    | Key -> ""
+  let is_not_null t = t = Not_null
+  let is_unique t = t = Unique
+
+  let unique cols =
+    List.filter_map
+      ~f:(fun (name,_,traits) ->
+          if List.mem traits Unique then Some name
+          else None) cols |> function
+  | [] -> ""
+  | uniq -> String.concat ~sep:", " uniq |>
+            sprintf "UNIQUE (%s),"
 
   let string_of_col (name, typ, traits) =
     sprintf "%s %s %s" name (string_of_typ typ) @@
     List.fold ~init:""
-      ~f:(fun s t -> sprintf "%s%s " s @@ string_of_traits t) traits
+      ~f:(fun s t ->
+          let nn = if is_not_null t then "NOT NULL" else "" in
+          sprintf "%s%s " s nn) traits
 
-  let col ?(key=false) ?(not_null=false) name typ =
-    let traits = try_add_traits
-        key Key (try_add_traits not_null Not_null []) in
+  let col ?(key=false) ?(not_null=false) ?(unique=false) name typ =
+    let traits =
+      try_add_traits key Key [] |>
+      try_add_traits not_null Not_null |>
+      try_add_traits unique Unique in
     name, typ, traits
 
   let keys cols =
@@ -50,14 +63,16 @@ module Tab = struct
 
   let col_name (x,_,_) = x
 
-  let create name cols =
-    let keys = List.map ~f:col_name (keys cols) in
+  let create name columns =
+    let keys = List.map ~f:col_name (keys columns) in
     let keys = String.concat ~sep:", " keys in
-    let cols = List.map ~f:string_of_col cols in
+    let uniq = unique columns in
+    let cols = List.map ~f:string_of_col columns in
     let cols = String.concat ~sep:", " cols in
     let desc = sprintf
-        "CREATE TABLE %s (%s, PRIMARY KEY (%s));" name cols keys in
-    {name; desc}
+        "CREATE TABLE %s (%s, %s PRIMARY KEY (%s));"
+        name cols uniq keys in
+    {name; desc; cols = columns}
 
   let name t = t.name
 
@@ -78,12 +93,18 @@ module Tab = struct
     if not r then add db tab
     else Ok ()
 
-  let insert db tab data =
+  let has_unique_fields tab =
+    let is_unique_col (_,_,traits) = List.mem traits Unique in
+    List.exists tab.cols ~f:is_unique_col
+
+  let insert db tab ?(ignore_=false) data =
     match data with
     | [] -> Ok ()
     | data ->
+      let ignore_ = if ignore_ then " OR IGNORE " else "" in
       let data = String.concat ~sep:"," data in
-      let query = sprintf "INSERT INTO %s VALUES %s;" tab.name data in
+      let query =
+        sprintf "INSERT %s INTO %s VALUES %s;" ignore_ tab.name data in
       checked db (sprintf "insert into %s" tab.name) query
 
   let get_max db tab col =
@@ -97,9 +118,31 @@ module Tab = struct
     | None -> Ok None
     | Some x -> Ok (Some x)
 
+  let str_of_where = function
+    | [] -> ""
+    | where ->
+      "WHERE " ^ (List.map where ~f:(fun (n,v) -> sprintf "%s = '%s'" n v) |>
+                  String.concat ~sep:" AND ")
+
+  let increment db tab ?(where=[]) field =
+    let where = str_of_where where in
+    let q = sprintf "UPDATE %s SET %s = %s + 1 %s" tab.name field
+        field where in
+    checked db (sprintf "update for %s in %s" field tab.name) q
+
+  let select db tab ?(where=[]) fields =
+    let where = str_of_where where in
+    let fields = String.concat ~sep:", " fields in
+    let q = sprintf "SELECT %s FROM %s %s" fields tab.name where in
+    let r = ref None in
+    let cb row _ = r := row.(0) in
+    checked ~cb db (sprintf "select for %s" tab.name) q >>= fun () ->
+    match !r with
+    | None -> Ok None
+    | Some x -> Ok (Some x)
+
 end
 
-(** TODO: add some checks  *)
 let open_db path = Ok (Sqlite3.db_open path)
 
 let start_transaction db = checked db "begin transaction" "BEGIN TRANSACTION"

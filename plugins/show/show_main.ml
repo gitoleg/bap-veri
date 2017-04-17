@@ -107,13 +107,16 @@ module Stat = struct
     let max_row_len = 10 in
     let max_col_cnt = 5 in
     let names = Hashtbl.keys unk in
-    Format.fprintf fmt "Instructions with unknown semantic \n";
+    let header () =
+      Format.fprintf fmt "Instructions with unknown semantic \n" in
     match List.sort ~cmp:String.compare names with
     | [] -> ()
     | names when List.length names <= max_row_len ->
+      header ();
       List.iter ~f:(Format.fprintf fmt "%s ") names;
       Format.print_newline ()
     | names ->
+      header ();
       let rows, row, _ = List.fold ~init:([], [], 0)
           ~f:(fun (acc, row, i) name ->
               if i < max_col_cnt then acc, name :: row, i + 1

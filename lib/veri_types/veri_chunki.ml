@@ -26,12 +26,11 @@ module Disasm = struct
   let insn_name = Dis.Insn.name
 end
 
-type error = Veri_result.error_kind * Error.t
 
 class context trace = object(self:'s)
   inherit Veri_traci.context trace as super
 
-  val error : error option = None
+  val error : Veri_error.t option = None
   val insn  : Disasm.insn option = None
   val bil   : bil = []
 

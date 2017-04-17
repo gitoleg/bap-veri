@@ -44,19 +44,14 @@ module Std : sig
   end
 
 
-  module Result : sig
-    type sema_error = [
+  module Verification_error : sig
+    type kind = [
+      | `Disasm_error (** error with disassembling                     *)
       | `Unsound_sema (** instruction execution mismatches with trace  *)
       | `Unknown_sema (** instruction semantic is unknown for lifter   *)
     ] [@@deriving bin_io, compare, sexp]
 
-    type error_kind = [
-      | `Disasm_error (** error with disassembling                     *)
-      | sema_error
-    ] [@@deriving bin_io, compare, sexp]
-
-    type kind = [ `Success | error_kind ] [@@deriving bin_io, compare, sexp]
-    type error = error_kind * Error.t [@@deriving bin_io, compare, sexp]
+    type t = kind * Error.t [@@deriving bin_io, compare, sexp]
   end
 
 
@@ -64,10 +59,10 @@ module Std : sig
     class context: Trace.t -> object('s)
         inherit Traci.context
 
-        method notify_error : Result.error option -> 's
+        method notify_error : Verification_error.t option -> 's
         method update_insn  : Disasm.insn Or_error.t -> 's
         method update_bil   : bil Or_error.t -> 's
-        method error : Result.error option
+        method error : Verification_error.t option
         method insn  : Disasm.insn option
         method bil   : bil
       end
@@ -166,7 +161,7 @@ module Std : sig
     val diff : t -> Policy.result list
     val index : t -> int
     val bytes : t -> string
-    val error : t -> Result.error option
+    val error : t -> Verification_error.t option
   end
 
 

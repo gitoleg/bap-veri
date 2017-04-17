@@ -15,7 +15,7 @@ module Info : sig
   val diff : t -> Veri_policy.result list
   val index : t -> int
   val bytes : t -> string
-  val error : t -> Veri_result.error option
+  val error : t -> Veri_error.t option
 end
 
 class context: Veri_policy.t -> Trace.t -> object('s)

@@ -31,8 +31,7 @@ let run_with_trace db_path p =
   let fut = Proj.finish p in
   let name = task_name p in
   let db =
-    Veri_db.create db_path `Trace >>= fun db ->
-    Veri_db.write db `Start >>= fun () ->
+    Veri_db.create db_path ~commit:(`Every 10000) `Trace >>= fun db ->
     Veri_db.add_info db (arch p) name >>= fun () ->
     Veri_db.add_dyn_info db (Proj.rules p) >>= fun () ->
     Ok db in
@@ -43,11 +42,7 @@ let run_with_trace db_path p =
     Stream.observe s (fun _ -> ());
     let db = Stream.upon fut s in
     Future.upon db (fun db ->
-        let res = Or_error.(
-            Veri_db.write_stat db >>= fun () ->
-            Veri_db.write db `End) in
-        Veri_db.close db;
-        match res with
+        match Veri_db.close db with
         | Ok () -> ()
         | Error er -> db_error er)
 

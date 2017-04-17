@@ -7,8 +7,8 @@ module Std = struct
   module Chunki  = Veri_chunki
   module Disasm  = Veri_chunki.Disasm
   module Policy  = Veri_policy
-  module Result  = Veri_result
   module Rule    = Veri_rule
   module Exec    = Veri_exec
   module Info    = Veri_exec.Info
+  module Verification_error = Veri_error
 end
