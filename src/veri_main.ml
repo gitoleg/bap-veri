@@ -10,6 +10,13 @@ let check_loaded = function
     Printf.eprintf "failed to load plugin from %s: %s"
       path (Error.to_string_hum er)
 
+let load_plugins plgs =
+  List.fold ~init:[] ~f:(fun a p ->
+      match Plugin.load p with
+      | Ok () -> Ok p :: a
+      | Error er -> Error (Plugin.path p, er) :: a) plgs |>
+  Result.all |> check_loaded
+
 let load_veri_plugins () =
   let is_prefixes ~prefixes s =
     List.exists ~f:(fun x -> String.is_prefix ~prefix:x s) prefixes in
@@ -17,16 +24,16 @@ let load_veri_plugins () =
     let name = Plugin.name p in
     Array.exists ~f:(fun arg ->
         is_prefixes ~prefixes:["-"^name; "--"^name ] arg) Sys.argv in
-  let plgs = Plugins.list ~query:["veri"] () in
-  let plgs = List.filter ~f:is_set plgs in
-  List.fold ~init:[] ~f:(fun a p ->
-      match Plugin.load p with
-      | Ok () -> Ok p :: a
-      | Error er -> Error (Plugin.path p, er) :: a) plgs
-  |> Result.all |> check_loaded
+  let plgs = Plugins.list ~provides:["veri"] () |>
+             List.filter ~f:is_set in
+  load_plugins plgs
 
 let load_bap_plugins () =
-  Plugins.load ~query:["core"] () |> Result.all |> check_loaded
+  let excluded =
+    List.map ~f:Plugin.name (Plugins.list ~provides:["veri"] ()) in
+  List.filter ~f:(fun p -> not @@ List.mem excluded (Plugin.name p))
+    (Plugins.list ()) |>
+  load_plugins
 
 let () = load_bap_plugins ()
 let () = load_veri_plugins ()

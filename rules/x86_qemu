@@ -20,6 +20,8 @@ SKIP .* '(.*) <= (.*):.*' '\1 <= \2:.*'
 SKIP MOV.* '.* => .*' ''
 SKIP CMOV.* '.* => .*' ''
 
+SKIP .* '.* => .*' ''
+
 # Last rules means that every event should has a pair
 DENY .* '.*' ''
 DENY .* '' '.*'
