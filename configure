@@ -1,5 +1,23 @@
 #!/bin/sh
 
+for i in "$@"; do
+  if $FST; then
+    set --
+    FST=false
+  fi
+
+  case $i in
+    --*=*)
+      ARG=${i%%=*}
+      VAL=${i##*=}
+      set -- "$@" "$ARG" "$VAL"
+      ;;
+    *)
+      set -- "$@" "$i"
+      ;;
+  esac
+done
+
 ocaml tools/cat.ml '"\n#1 \"$name\"\n"' -- myocamlbuild.ml.in myocamlbuild.ml
 oasis setup
 ocaml setup.ml -configure "$@"
