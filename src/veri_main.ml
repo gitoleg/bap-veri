@@ -123,27 +123,64 @@ module Command = struct
     let doc = "List all available plugins" in
     Arg.(value & flag & info ["list-plugins"] ~doc), doc
 
-  let rules, rules_doc =
-    let doc = "File with policy description" in
+  let rules, rules_pre =
+    let doc =
+      "$(b,--rules)
+    File with policy description.
+    It's an ideal case when all events from trace and all events
+    from BIL are equal to each other. But in practice both trace
+    and bil could contain some special cases. For example, trace
+    could be obtained from source, that does not provide some cpu
+    flags or bil does not support some instructions. And there is
+    an option to shadow such cases and don't mark them as error.
+    From other point of view, we do not want to miss other errors.
+    So for this reasons $(mname) supports policy, that is a set of
+    rules with the following grammar:
+
+    $(i,ACTION) $(i,INSN) $(i,L_EVENT) $(i,R_EVENT)
+
+    Each rule consists of 4 fields:
+    $(i,ACTION)  could be either $(i,SKIP), either $(i,DENY). If we have
+            processed trace without matching with any $(i,DENY), then
+            everything is ok.
+    $(i,INSN)    could contain an instruction name like $(i,MOV64rr)
+            or regular expression, like $(i,MOV.*)
+    $(i,L_EVENT) left hand-side event, corresponds to textual representation
+            of tracer events, and could contain any string and
+            regualar expression.
+    $(i,R_EVENT) right hand-side event, corresponds to textual representation
+            of lifter events, and could contain any string and
+            regualar expression.
+
+    Matching is performed textually, based on event syntax. Regexp syntax
+    supports backreferences in event fields. Only that events, that don't
+    have an equal pair in other set goes to this matching.
+    Each row in rules file either contains a rule, or commented with #
+    symbol, or is empty. Rule must have exactly 4 fields.
+    An empty field must be written as \'\' or \"\". Fields with spaces must be
+    written in quotes: \"RAX => .*\", single quotes also supported: \'RAX => .*\'." in
     Arg.(value & opt (some non_dir_file) None
-         & info ["rules"] ~docv:"FILE" ~doc), doc
+         & info ["rules"] ~docv:"FILE" ), doc
 
   let info =
     let doc = "Bil verification tool" in
     let man = [
       `S "SYNOPSIS";
       `Pre "
-        $(mname) $(i,FILE)
-        $(mname) $(i,FILE) [--rules=$(i,RULES)]
-        $(mname) --list-plugins";
+$(mname) $(i,FILE)
+$(mname) $(i,FILE) [--rules=$(i,RULES)]
+$(mname) --list-plugins";
       `S "DESCRIPTION";
-      `P "Veri is a BIL verification tool and intend to verify BAP lifters
-          and to find errors.";
+      `P
+     "Veri is a BIL verification tool and intended to check BAP lifters.
+     The tool compares results of execution of every instruction
+     in a trace with execution of BIL code, that describes
+     this instruction.";
       `S "OPTIONS";
       `I ("$(b,--list-plugins)", list_plugins_doc);
-      `I ("$(b,--rules)", rules_doc);
+      `Pre rules_pre ;
     ] in
-    Term.info "veri" ~doc ~man
+    Term.info "bap-veri" ~doc ~man
 
   let create a b = Veri_options.Fields.create a b
 
