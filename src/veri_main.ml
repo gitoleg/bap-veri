@@ -1,4 +1,5 @@
 open Core_kernel.Std
+open Format
 open Bap.Std
 open Bap_traces.Std
 open Bap_plugins.Std
@@ -17,6 +18,9 @@ let load_plugins plgs =
       | Error er -> Error (Plugin.path p, er) :: a) plgs |>
   Result.all |> check_loaded
 
+let veri_plugins () =
+  Plugins.list ~env:["veri-frontend"] ~provides:["veri"] ()
+
 let load_veri_plugins () =
   let is_prefixes ~prefixes s =
     List.exists ~f:(fun x -> String.is_prefix ~prefix:x s) prefixes in
@@ -24,9 +28,9 @@ let load_veri_plugins () =
     let name = Plugin.name p in
     Array.exists ~f:(fun arg ->
         is_prefixes ~prefixes:["-"^name; "--"^name ] arg) Sys.argv in
-  let plgs = Plugins.list ~provides:["veri"] () |>
-             List.filter ~f:is_set in
-  load_plugins plgs
+  veri_plugins () |>
+  List.filter ~f:is_set |>
+  load_plugins
 
 let load_bap_plugins () =
   let excluded =
@@ -42,8 +46,8 @@ open Veri.Std
 
 module Veri_options = struct
   type t = {
-    rules : string option;
-    path  : string;
+    rules        : string option;
+    path         : string;
   } [@@deriving fields]
 end
 
@@ -55,13 +59,11 @@ module Program (O : Opts) = struct
   open Veri_options
   open O
 
-
   let eval_file file rules =
     let open Or_error in
     let uri = Uri.of_string ("file:" ^ file) in
     Proj.create uri rules >>= fun p ->
     Proj.run p
-
 
   let read_dir path =
     let dir = Unix.opendir path in
@@ -108,31 +110,48 @@ module Command = struct
 
   open Cmdliner
 
-  let filename =
+  let get_opt ~default argv opt  =
+    Option.value (fst (Term.eval_peek_opts ~argv opt)) ~default
+
+  let filename, filename_doc =
     let doc =
       "Input file with extension .frames or directory with .frames files" in
-    Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"FILE | DIR")
+    Arg.(required & pos 0 (some string) None
+         & info [] ~doc ~docv:"FILE | DIR"), doc
 
-  let rules =
+  let list_plugins, list_plugins_doc =
+    let doc = "List all available plugins" in
+    Arg.(value & flag & info ["list-plugins"] ~doc), doc
+
+  let rules, rules_doc =
     let doc = "File with policy description" in
-    Arg.(value & opt (some non_dir_file) None & info ["rules"] ~docv:"FILE" ~doc)
+    Arg.(value & opt (some non_dir_file) None
+         & info ["rules"] ~docv:"FILE" ~doc), doc
 
   let info =
     let doc = "Bil verification tool" in
     let man = [
+      `S "SYNOPSIS";
+      `Pre "
+        $(mname) $(i,FILE)
+        $(mname) $(i,FILE) [--rules=$(i,RULES)]
+        $(mname) --list-plugins";
       `S "DESCRIPTION";
       `P "Veri is a BIL verification tool and intend to verify BAP lifters
           and to find errors.";
+      `S "OPTIONS";
+      `I ("$(b,--list-plugins)", list_plugins_doc);
+      `I ("$(b,--rules)", rules_doc);
     ] in
     Term.info "veri" ~doc ~man
 
   let create a b = Veri_options.Fields.create a b
 
-  let run_t = Term.(const create $ rules $ filename )
+  let run_t = Term.(const create $ rules $ filename)
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
-    let known_plugins = Plugins.list () |> List.map ~f:Plugin.name in
+    let known_plugins  = Plugins.list () |> List.map ~f:Plugin.name in
     let known_names = known_passes @ known_plugins in
     let prefixes = List.map known_names  ~f:(fun name -> "--" ^ name) in
     let is_prefix str prefix = String.is_prefix ~prefix str in
@@ -156,10 +175,21 @@ module Command = struct
 
 end
 
+let list_plugins_and_exit () =
+  let plugins =
+    let cmp x y = String.compare (Plugin.name x) (Plugin.name y) in
+    List.sort ~cmp (veri_plugins ()) in
+  List.iter ~f:(fun p ->
+      printf "%-16s %s@." (Plugin.name p) (Plugin.desc p)) plugins;
+  exit 0
+
 let start options =
   let module Program = Program(struct
       let options = options
     end) in
   Program.main ()
 
-let () = start (Command.parse Sys.argv)
+let () =
+  if Command.get_opt Sys.argv Command.list_plugins ~default:false then
+    list_plugins_and_exit ();
+  start (Command.parse Sys.argv)

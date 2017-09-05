@@ -53,40 +53,47 @@ Executable "bap-veri"
   BuildDepends:   bap.plugins, bap-veri, cmdliner, findlib.dynload
 
 Library show_plugin
-  Path:            plugins/show
-  FindLibName:     veri-plugin-show
-  InternalModules: Show_main
-  CompiledObject:  best
-  Install:         true
-  BuildDepends:    bap-veri, textutils
-  XMETAExtraLines: tags="veri"
+  Path:             plugins/show
+  FindLibName:      veri-plugin-show
+  InternalModules:  Show_main
+  CompiledObject:   best
+  Install:          true
+  BuildDepends:     bap-veri, textutils
+  XMETADescription: prints information about verification results
+  XMETAExtraLines:  tags="veri"
+                    constraints="veri-frontend"
 
 Library brief_plugin
-  Path:            plugins/brief
-  FindLibName:     veri-plugin-brief
-  InternalModules: Brief_main
-  CompiledObject:  best
-  Install:         true
-  BuildDepends:    bap-veri
-  XMETAExtraLines: tags="veri"
+  Path:             plugins/brief
+  FindLibName:      veri-plugin-brief
+  InternalModules:  Brief_main
+  CompiledObject:   best
+  Install:          true
+  BuildDepends:     bap-veri
+  XMETADescription: writes brief verification results into a file
+  XMETAExtraLines:  tags="veri"
+                    constraints="veri-frontend"
 
 Library lite_plugin
-  Path:            plugins/lite
-  FindLibName:     veri-plugin-lite
-  InternalModules: Lite_main
-  CompiledObject:  best
-  Install:         true
-  BuildDepends:    bap-veri, bap-veri-lite
-  XMETAExtraLines: tags="veri"
+  Path:             plugins/lite
+  FindLibName:      veri-plugin-lite
+  InternalModules:  Lite_main
+  CompiledObject:   best
+  Install:          true
+  BuildDepends:     bap-veri, bap-veri-lite
+  XMETADescription: store dynamic information for BIL verificaion
+  XMETAExtraLines:  tags="veri"
+                    constraints="veri-frontend"
 
 Library static_plugin
-  Path:            bap_plugins/static
-  FindLibName:     veri-plugin-static
-  InternalModules: Static_main
-  CompiledObject:  best
-  Install:         true
-  BuildDepends:    bap-veri, bap-veri-lite
-  XMETAExtraLines: tags="core, veri"
+  Path:             bap_plugins/static
+  FindLibName:      veri-plugin-static
+  InternalModules:  Static_main
+  CompiledObject:   best
+  Install:          true
+  BuildDepends:     bap-veri, bap-veri-lite
+  XMETADescription: stores static information for BIL verificaion
+  XMETAExtraLines:  tags="veri"
 
 # Executable run_tests
 #   Path:           tests

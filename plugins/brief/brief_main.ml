@@ -50,7 +50,7 @@ module Cmd = struct
 
   let man = [
     `S "DESCRIPTION";
-    `P "Write a brief information about verification into file. ";
+    `P "Writes a brief information about verification into file. ";
   ]
 
   let path =

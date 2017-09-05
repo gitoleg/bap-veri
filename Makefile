@@ -5,8 +5,8 @@ build: setup.ml
 
 install:
 	$(SETUP) -install
-	sh tools/build_plugins.sh plugins veri
-	sh tools/build_plugins.sh bap_plugins ""
+	sh tools/build_plugins.sh plugins
+	sh tools/build_plugins.sh bap_plugins
 
 uninstall:
 	$(SETUP) -uninstall $

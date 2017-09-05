@@ -182,7 +182,7 @@ module Cmd = struct
 
   let man = [
     `S "DESCRIPTION";
-    `P "Print information about verification. ";
+    `P "Prints detailed information about verification. ";
   ]
 
   let show_errors =
