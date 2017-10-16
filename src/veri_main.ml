@@ -35,7 +35,7 @@ let load_veri_plugins () =
 let load_bap_plugins () =
   let excluded =
     List.map ~f:Plugin.name (Plugins.list ~provides:["veri"] ()) in
-  List.filter ~f:(fun p -> not @@ List.mem excluded (Plugin.name p))
+  List.filter ~f:(fun p -> not @@ List.mem ~equal:(=) excluded (Plugin.name p))
     (Plugins.list ()) |>
   load_plugins
 
@@ -188,7 +188,8 @@ $(mname) --list-plugins";
 
   let filter_argv argv =
     let known_passes = Project.passes () |> List.map ~f:Project.Pass.name in
-    let known_plugins  = Plugins.list () |> List.map ~f:Plugin.name in
+    let known_plugins = veri_plugins () @
+      Plugins.list () |> List.map ~f:Plugin.name in
     let known_names = known_passes @ known_plugins in
     let prefixes = List.map known_names  ~f:(fun name -> "--" ^ name) in
     let is_prefix str prefix = String.is_prefix ~prefix str in

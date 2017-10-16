@@ -9,6 +9,12 @@ License:      MIT
 Copyrights:   (C) 2016 Carnegie Mellon University
 Plugins:      META (0.4)
 BuildTools:   ocamlbuild
+AlphaFeatures: ocamlbuild_more_args
+XOCamlbuildExtraArgs:
+     -use-ocamlfind
+     -classic-display
+     -plugin-tags "'package(findlib),package(core_kernel),package(ppx_driver.ocamlbuild)'"
+
 BuildDepends: ppx_jane, core_kernel, bap, bap-traces, bap-future, threads
 
 Library bap-veri
@@ -32,8 +38,8 @@ Library veri_types
                    Veri_traci,
                    Veri_types
   CompiledObject:  best
-  NativeOpt:       -pp 'ppx-jane -dump-ast'
-  ByteOpt:         -pp 'ppx-jane -dump-ast'
+  NativeOpt:       -pp 'ppx-jane -dump-ast' -predicates ppx_drivers -predicates custom_ppx
+  ByteOpt:         -pp 'ppx-jane -dump-ast' -predicates ppx_drivers -predicates custom_ppx
   BuildDepends:    pcre
 
 Library bap_veri_lite

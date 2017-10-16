@@ -146,9 +146,9 @@ module Reader = struct
     let inc = In_channel.create path in
     let strs = In_channel.input_lines inc in
     In_channel.close inc;
-    List.map ~f:String.strip strs
-    |> List.filter ~f:is_sensible
-    |> List.map ~f:of_string_err |>
+    List.map ~f:String.strip strs |>
+    List.filter ~f:is_sensible    |>
+    List.map ~f:of_string_err     |>
     List.filter_map ~f:(function
         | Ok r -> Some r
         | Error er ->

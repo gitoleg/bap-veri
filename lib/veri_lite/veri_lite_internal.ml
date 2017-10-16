@@ -38,7 +38,7 @@ module Tab = struct
   let unique cols =
     List.filter_map
       ~f:(fun (name,_,traits) ->
-          if List.mem traits Unique then Some name
+          if List.mem ~equal:(=) traits Unique then Some name
           else None) cols |> function
   | [] -> ""
   | uniq -> String.concat ~sep:", " uniq |>
@@ -95,7 +95,7 @@ module Tab = struct
     else Ok ()
 
   let has_unique_fields tab =
-    let is_unique_col (_,_,traits) = List.mem traits Unique in
+    let is_unique_col (_,_,traits) = List.mem ~equal:(=) traits Unique in
     List.exists tab.cols ~f:is_unique_col
 
   let insert db tab ?(ignore_=false) data =
