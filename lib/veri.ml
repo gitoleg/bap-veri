@@ -205,13 +205,16 @@ class ['a] t arch dis =
         self#update_event ev >>= fun () -> SM.return r
       | _ -> SM.return r
 
-    method private store_and_load ~mem ~addr mv endian size =
+    method private store_and_load ~mem ~addr mv endian origin_size =
       let data = Bil.int (Move.data mv) in
-      super#eval_store ~mem ~addr data endian size >>= fun r ->
-      match value r with
-      | Bil.Mem _ -> super#update mem_var r >>= fun () ->
-        super#eval_load ~mem ~addr endian size
-      | Bil.Imm _ | Bil.Bot -> SM.return r
+      match Size.of_int (Word.bitwidth (Move.data mv)) with
+      | Error _ -> self#type_error Type_error.bad_imm
+      | Ok size ->
+        super#eval_store ~mem ~addr data endian size >>= fun r ->
+        match value r with
+        | Bil.Mem _ -> super#update mem_var r >>= fun () ->
+          super#eval_load ~mem ~addr endian origin_size
+        | Bil.Imm _ | Bil.Bot -> SM.return r
 
     (** [resolve_addr addr] - returns a result, bound with [addr].
         Sequence of searches is the following:
@@ -246,14 +249,14 @@ class ['a] t arch dis =
       | Bil.Bot | Bil.Mem _ -> SM.return addr_res
       | Bil.Imm addr' ->
         match find_mem_store (self_events ctxt) (same_addr addr') with
-        | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+        | Some mv -> self#store_and_load ~mem ~addr mv endian size
         | None ->
           self#resolve_addr mem addr endian size >>= fun r ->
           match value addr_res, value r with
           | Bil.Imm addr, Bil.Imm data ->
             self#update_event (create_mem_load addr data) >>= fun () ->
             SM.return r
-          | _ ->  SM.return r
+          | _ -> SM.return r
 
     method private add_pc_update =
       SM.get () >>= fun ctxt ->
