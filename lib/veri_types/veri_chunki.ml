@@ -42,7 +42,7 @@ class context trace = object(self:'s)
 
   method update_bil b = match b with
     | Error er -> {< error = Some (`Unknown_sema, er); bil = [] >}
-    | Ok bil   -> {< error = None; bil = bil >}
+    | Ok bil   -> {< error = None; bil = Stmt.normalize bil >}
 
   method error = error
   method insn  = insn

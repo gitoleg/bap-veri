@@ -34,7 +34,10 @@ class ['a] t arch =
   let endian = Arch.endian arch in
   object(self)
     constraint 'a = #context
-    inherit ['a] Bili.t
+    inherit ['a] Bili.t as super
+
+    method! eval_exp exp =
+      super#eval_exp (Exp.normalize exp)
 
     method eval_memory_store mv =
       match data_size mv with
@@ -42,7 +45,8 @@ class ['a] t arch =
       | Some size ->
         let addr = Bil.int (Move.cell mv) in
         let data = Bil.int (Move.data mv) in
-        self#eval_store ~mem ~addr data endian size >>= fun r ->
+        let exp = Bil.store ~mem ~addr data endian size in
+        self#eval_exp exp >>= fun r ->
         SM.update (fun c -> c#update mem_var r)
 
     method eval_register_write mv =
@@ -56,7 +60,8 @@ class ['a] t arch =
       | None -> SM.return ()
       | Some size ->
         let addr = Bil.int (Move.cell mv) in
-        self#eval_load ~mem ~addr endian size >>| ignore
+        let exp = Bil.load ~mem ~addr endian size in
+        self#eval_exp exp >>| ignore
 
     method eval_register_read mv =
       self#lookup (Move.cell mv) >>| ignore
