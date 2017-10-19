@@ -248,23 +248,28 @@ class ['a] t arch dis =
         | Error er -> SM.update (fun c -> c#notify_error er)
         | Ok insn -> self#eval_insn insn
 
+    method! eval_memory_load mv =
+      SM.get () >>= fun init ->
+      let is_new e = not (Set.mem init#events e) in
+      self#eval_memory_store mv  >>= fun _ ->
+      SM.update (fun c -> c#discard_event is_new) >>= fun () ->
+      super#eval_memory_load mv
+
+    method! eval_pc_update addr =
+      super#eval_pc_update addr >>= fun () ->
+      self#verify_frame
+
+    method! eval_exec code =
+      super#eval_exec code >>= fun () ->
+      SM.update (fun c -> c#set_code code)
+
     method! eval_event ev =
+      super#eval_event ev >>= fun () ->
       Value.Match.(
         select @@
-        case Event.code_exec (fun code ->
-            SM.update (fun c -> c#set_code code)) @@
-        case Event.pc_update (fun addr ->
-            self#eval_pc_update addr >>= fun () ->
-            self#verify_frame >>= fun () ->
-            self#update_event ev) @@
-        case Event.memory_store (fun mv ->
-            self#eval_memory_store mv) @@
-        case Event.memory_load (fun mv ->
-            SM.get () >>= fun init ->
-            let is_new e = not (Set.mem init#events e) in
-            self#eval_memory_store mv  >>= fun _ ->
-            SM.update (fun c -> c#discard_event is_new) >>= fun () ->
-            self#eval_memory_load mv) @@
+        case Event.code_exec    (fun _ -> SM.return ()) @@
+        case Event.memory_store (fun _ -> SM.return ()) @@
+        case Event.memory_load  (fun _ -> SM.return ()) @@
         default (fun () -> self#update_event ev)) ev
 
     method private verify_frame : 'a u =
