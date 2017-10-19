@@ -36,9 +36,6 @@ class ['a] t arch =
     constraint 'a = #context
     inherit ['a] Bili.t as super
 
-    method! eval_exp exp =
-      super#eval_exp (Exp.normalize exp)
-
     method eval_memory_store mv =
       match data_size mv with
       | None -> SM.return ()

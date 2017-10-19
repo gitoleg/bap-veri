@@ -253,9 +253,8 @@ class ['a] t arch dis =
       | Error er ->
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
       | Ok bil ->
-        let bil = Stmt.normalize ~normalize_exp:true bil in
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
-        self#eval bil
+        self#eval (Stmt.normalize ~normalize_exp:true bil)
 
     method private eval_chunk chunk =
       self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
