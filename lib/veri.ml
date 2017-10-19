@@ -16,7 +16,7 @@ type error = Veri_error.t
 let create_move_event tag cell' data' =
   Value.create tag Move.({cell = cell'; data = data';})
 
-let find tag evs cond =
+let find cond tag evs =
   let open Option in
   List.find evs ~f:(fun ev -> match Value.get tag ev with
       | None -> false
@@ -26,10 +26,6 @@ let create_mem_store = create_move_event Event.memory_store
 let create_mem_load  = create_move_event Event.memory_load
 let create_reg_read  = create_move_event Event.register_read
 let create_reg_write = create_move_event Event.register_write
-let find_reg_read  = find Event.register_read
-let find_reg_write = find Event.register_write
-let find_mem_load  = find Event.memory_load
-let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
 module Disasm = struct
@@ -136,7 +132,7 @@ let self_events c = Set.to_list c#events
 let same_var  var  mv = Var.name var  = Var.name (Move.cell mv)
 let same_addr addr mv = addr = Move.cell mv
 
-type touch = [ `Addr of addr | `Var of var ]
+type find = [ `Addr of addr | `Var of var ]
 
 class ['a] t arch dis =
   let endian = Arch.endian arch in
@@ -149,56 +145,44 @@ class ['a] t arch dis =
     method private update_event ev =
       SM.update (fun c -> c#register_event ev)
 
-    (** [touch x] - return a value bound with [x] where
+    (** [find_value x] - return a value bound with [x] where
         [x] is either address or variable. In each variant of x
         an appropriative lookup order is applied.
-        An event could be emited. *)
-    method private touch x =
-      let touch_value probes =
-        List.find_map probes ~f:(fun (probe, x) -> match probe () with
-            | None -> None
-            | Some mv -> Some (mv, x)) |> function
+        A register_read/memory_load event will be emited. *)
+    method private find_value x =
+      let find_data ctxt cond = function
+        | `Write, tag -> find cond tag (self_events ctxt)
+        | `Read, tag ->
+          match find cond tag (self_events ctxt) with
+          | None -> find cond tag (other_events ctxt)
+          | x -> x in
+      let find cond make_event tags =
+        SM.get () >>= fun ctxt ->
+        List.find_map ~f:(find_data ctxt cond) tags |> function
         | None -> SM.return None
-        | Some (mv, `Lookup) -> SM.return (Some (Move.data mv))
-        | Some (mv, `Emit f) ->
-          self#update_event (f mv) >>= fun () ->
+        | Some mv ->
+          self#update_event
+            (make_event (Move.cell mv) (Move.data mv)) >>= fun () ->
           SM.return (Some (Move.data mv)) in
-      SM.get () >>= fun ctxt ->
-      let self_evs = self_events ctxt in
-      let other_evs = other_events ctxt in
-      let mk_move f mv = f (Move.cell mv) (Move.data mv) in
       match x with
       | `Var var ->
-        let find tag evs = find tag evs (same_var var) in
-        let emit = `Emit (fun mv -> mk_move create_reg_read mv) in
-        let searches = [
-          (fun () -> find Event.register_write  self_evs), `Lookup;
-          (fun () -> find Event.register_read   self_evs), `Lookup;
-          (fun () -> find Event.register_read  other_evs),  emit;
-        ] in
-        touch_value searches
+        find (same_var var) create_reg_read
+          [ `Write, Event.register_write; `Read, Event.register_read ]
       | `Addr addr ->
-        let emit = `Emit (fun mv -> mk_move create_mem_load mv) in
-        let find tag events = find tag events (same_addr addr) in
-        let searches = [
-          (fun () -> find Event.memory_store self_evs), `Lookup;
-          (fun () -> find Event.memory_load  self_evs), `Lookup;
-          (fun () -> find Event.memory_load  other_evs), emit;
-        ] in
-        touch_value searches
+        find (same_addr addr) create_mem_load
+          [ `Write, Event.memory_store; `Read, Event.memory_load; ]
 
-    method! lookup var : 'a r =
+    method! lookup var =
       SM.get () >>= fun ctxt ->
-      self#touch (`Var var) >>= function
+      self#find_value (`Var var) >>= function
       | None -> super#lookup var
       | Some data -> self#eval_exp (Bil.int data)
 
-    method! update var result : 'a u =
+    method! update var result =
       super#update var result >>= fun () ->
       match value result with
       | Bil.Imm data ->
         if not (Var.is_virtual var) then
-          SM.update (fun c -> c#discard_event (is_previous_write var)) >>= fun () ->
           self#update_event (create_reg_write var data)
         else SM.return ()
       | Bil.Mem _ | Bil.Bot -> SM.return ()
@@ -208,7 +192,6 @@ class ['a] t arch dis =
       self#eval_exp data >>= fun data_r ->
       match value addr_r, value data_r with
       | Bil.Imm got_addr, Bil.Imm got_data ->
-        SM.update (fun c -> c#discard_event (is_previous_store got_addr)) >>= fun () ->
         self#update_event (create_mem_store got_addr got_data) >>= fun () ->
         super#eval_store ~mem ~addr data endian size
       | _ -> super#eval_store ~mem ~addr data endian size
@@ -218,7 +201,7 @@ class ['a] t arch dis =
       match value addr_res with
       | Bil.Bot | Bil.Mem _ -> super#eval_load ~mem ~addr endian size
       | Bil.Imm addr' ->
-        self#touch (`Addr addr') >>= function
+        self#find_value (`Addr addr') >>= function
         | Some data ->
           super#eval_store ~mem ~addr (Bil.int data) endian size >>= fun sr ->
           self#update mem_var sr >>= fun () ->
