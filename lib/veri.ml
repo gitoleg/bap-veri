@@ -86,10 +86,6 @@ class context stat policy trace = object(self:'s)
           Signal.send (snd stream) report;
           self#finish_step (Veri_stat.failbil stat name)
 
-  method discard_event: (event -> bool) -> 's = fun f ->
-    let fneg x = not (f x) in
-    {< events = Set.filter events ~f:fneg >}
-
   method split =
     let s = {< other = Some self; events = Events.empty; >} in
     s#drop_pc
@@ -249,11 +245,17 @@ class ['a] t arch dis =
         | Ok insn -> self#eval_insn insn
 
     method! eval_memory_load mv =
-      SM.get () >>= fun init ->
-      let is_new e = not (Set.mem init#events e) in
-      self#eval_memory_store mv  >>= fun _ ->
-      SM.update (fun c -> c#discard_event is_new) >>= fun () ->
-      super#eval_memory_load mv
+      let addr = Bil.int @@ Move.cell mv in
+      let data = Move.data mv in
+      match Size.of_int_opt @@ Word.bitwidth data with
+      | None -> SM.return ()
+      | Some size ->
+        SM.get () >>= fun ctxt ->
+        super#eval_store
+          ~mem:(Bil.var mem_var) ~addr (Bil.int data) endian size >>= fun r ->
+        SM.put ctxt >>= fun () ->
+        super#update mem_var r >>= fun () ->
+        super#eval_memory_load mv
 
     method! eval_pc_update addr =
       super#eval_pc_update addr >>= fun () ->
