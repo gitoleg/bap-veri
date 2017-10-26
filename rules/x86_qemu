@@ -7,18 +7,52 @@ SKIP .* '.*: .* - .*' ''
 # skipping context switch events
 SKIP .* 'context-switch.*' ''
 
+# ignore all ours unmatched reads
+SKIP .* '' '.* => .*'
+
+# OR insn contains an unmatched read at left side,
+# e.g. when an argument is (imm -1)
+SKIP OR* '.* => .*' ''
+
+# XOR contains an unmatched read at left side when
+# operands are the same
+SKIP XOR* '.* => .*' ''
+
+# for some reasons qemu doesn't write to destination
+SKIP IMUL.* '' '.* <= .*'
+SKIP MUL.* '' '.* <= .*'
+SKIP DIV.* '' '.* <= .*'
+
 # skipping flags
 SKIP .* '.FLAGS.*' ''
 SKIP .* '' '.F => .*'
 SKIP .* '' '.F <= .*'
 
-# to solve differences in bitwidth
-SKIP .* '(.*) => (.*):.*' '\1 => \2:.*'
-SKIP .* '(.*) <= (.*):.*' '\1 <= \2:.*'
+# we can't rely on SHR8ri events, since in qemu there are two
+# sequential reads of source operand, e.g. RAX => 0x10; RAX => 0x1
+# so we can't figure out what exactly we should to shift.
+# And we have event mismatchig because of this, so we ignore this
+# instruction.
+SKIP SHR8ri '' ''
+
+# skip instructions, whose side effect depends on flags
+SKIP JE_1  .* .*
+SKIP JBE_1 .* .*
+SKIP JNE_1 .* .*
+SKIP JNE_4 .* .*
+
+# tracer produces wrong reads/writes when operand size
+# lesser then current mode bitwidth
+SKIP .* '(.*) <= 0x.+(.*)' '\1 <= \2'
+SKIP .* '(.*) => 0x.+(.*)' '\1 => \2'
 
 # qemu contains some addition readings even in write operations
-SKIP MOV.* '.* => .*' ''
-SKIP CMOV.* '.* => .*' ''
+SKIP .* '.* => .*' ''
+
+# tracer produces extra zero writes/reads when operands size
+# lesser then current mode bitwidth, e.g. Mov8mi
+SKIP .* '.* => 0' ''
+SKIP .* '.* <= 0' ''
 
 # Last rules means that every event should has a pair
 DENY .* '.*' ''
