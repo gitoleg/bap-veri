@@ -1,6 +1,9 @@
 # skipping context switch events
 SKIP .* 'context-switch.*' ''
 
+# ignore all ours unmatched reads
+SKIP .* '' '.* => .*'
+
 SKIP .* '' '.F => .*'
 SKIP .* '' '.F <= .*'
 SKIP .* '.F <= .*' ''

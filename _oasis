@@ -1,4 +1,4 @@
-OASISFormat:  0.4
+gOASISFormat:  0.4
 Name:         bap-veri
 Version:      0.2
 Synopsis:     Bil verification tool
@@ -23,8 +23,8 @@ Library veri
                   Veri_traci
   CompiledObject: best
   Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast'
-  ByteOpt:        -pp 'ppx-jane -dump-ast'
+  NativeOpt:      -pp 'ppx-jane -dump-ast' -predicates ppx_driver
+  ByteOpt:        -pp 'ppx-jane -dump-ast' -predicates ppx_driver
   BuildDepends:   pcre, textutils, threads
 
 Library veri_test
@@ -32,9 +32,9 @@ Library veri_test
   Build$:         flag(tests)
   Install:        false
   CompiledObject: best
-  Modules:        Veri_test, 
-                  Veri_policy_test, 
-                  Veri_rule_test, 
+  Modules:        Veri_test,
+                  Veri_policy_test,
+                  Veri_rule_test,
                   Veri_stat_test
   BuildDepends:   bap-veri, oUnit
 

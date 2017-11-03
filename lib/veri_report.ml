@@ -40,8 +40,9 @@ include Regular.Make(struct
       Format.fprintf fmt "%a\n%a" Veri_rule.pp rule Matched.pp matched
 
     let pp fmt t =
+      let bil = Stmt.simpl t.bil in
       Format.fprintf fmt "@[<v>%s %a@,left: %a@,right: %a@,%a@]@."
-        t.insn pp_code t.code pp_evs t.left pp_evs t.right Bil.pp t.bil;
+        t.insn pp_code t.code pp_evs t.left pp_evs t.right Bil.pp bil;
       List.iter ~f:(pp_data fmt) t.data;
       Format.print_newline ()
 

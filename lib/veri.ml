@@ -16,7 +16,7 @@ type error = Veri_error.t
 let create_move_event tag cell' data' =
   Value.create tag Move.({cell = cell'; data = data';})
 
-let find tag evs cond =
+let find cond tag evs =
   let open Option in
   List.find evs ~f:(fun ev -> match Value.get tag ev with
       | None -> false
@@ -26,10 +26,6 @@ let create_mem_store = create_move_event Event.memory_store
 let create_mem_load  = create_move_event Event.memory_load
 let create_reg_read  = create_move_event Event.register_read
 let create_reg_write = create_move_event Event.register_write
-let find_reg_read  = find Event.register_read
-let find_reg_write = find Event.register_write
-let find_mem_load  = find Event.memory_load
-let find_mem_store = find Event.memory_store
 let value = Bil.Result.value
 
 module Disasm = struct
@@ -90,11 +86,6 @@ class context stat policy trace = object(self:'s)
           Signal.send (snd stream) report;
           self#finish_step (Veri_stat.failbil stat name)
 
-  method discard_event: (event -> bool) -> 's = fun f ->
-    match Set.find events ~f with
-    | None -> self
-    | Some ev -> {< events = Set.remove events ev >}
-
   method split =
     let s = {< other = Some self; events = Events.empty; >} in
     s#drop_pc
@@ -137,6 +128,8 @@ let self_events c = Set.to_list c#events
 let same_var  var  mv = Var.name var  = Var.name (Move.cell mv)
 let same_addr addr mv = addr = Move.cell mv
 
+type find = [ `Addr of addr | `Var of var ]
+
 class ['a] t arch dis =
   let endian = Arch.endian arch in
   let mem_var, lift = target_info arch in
@@ -148,112 +141,74 @@ class ['a] t arch dis =
     method private update_event ev =
       SM.update (fun c -> c#register_event ev)
 
-    (** [resolve_var var] - returns a result, bound with [var].
-        Sequence of searches is the following:
-        1) among read events that occured at current step in the same context,
-           with the same variable;
-        2) among read events that occures at current step, in other context,
-           with the same variable;
-        3) in current context, for the same variable *)
-    method private resolve_var : var -> 'a r = fun var ->
-      SM.get () >>= fun ctxt ->
-      match find_reg_read (self_events ctxt) (same_var var) with
-      | Some mv -> self#eval_exp (Bil.int (Move.data mv))
-      | None ->
-        match find_reg_read (other_events ctxt) (same_var var) with
-        | Some mv -> self#eval_exp (Bil.int (Move.data mv))
-        | None -> super#lookup var
+    (** [find_value x] - return a value bound with [x] where
+        [x] is either address or variable. In each variant of x
+        an appropriative lookup order is applied.
+        A register_read/memory_load event will be emited. *)
+    method private find_value x =
+      let find_data ctxt cond = function
+        | `Write, tag -> find cond tag (self_events ctxt)
+        | `Read, tag ->
+          match find cond tag (self_events ctxt) with
+          | None -> find cond tag (other_events ctxt)
+          | x -> x in
+      let find cond make_event tags =
+        SM.get () >>= fun ctxt ->
+        List.find_map ~f:(find_data ctxt cond) tags |> function
+        | None -> SM.return None
+        | Some mv ->
+          self#update_event
+            (make_event (Move.cell mv) (Move.data mv)) >>= fun () ->
+          SM.return (Some (Move.data mv)) in
+      match x with
+      | `Var var ->
+        find (same_var var) create_reg_read
+          [ `Write, Event.register_write; `Read, Event.register_read ]
+      | `Addr addr ->
+        find (same_addr addr) create_mem_load
+          [ `Write, Event.memory_store; `Read, Event.memory_load; ]
 
-    (** [lookup var] - returns a result, bound with variable.
-        Search starts from self events, if it was write access to given
-        variable at current step. And if it was, then result of write
-        access returned and no read event is emitted.
-        Otherwise searching continues as written above for [resolve_var],
-        with emitting register_read event. *)
-    method! lookup var : 'a r =
+    method! lookup var =
       SM.get () >>= fun ctxt ->
-      match find_reg_write (self_events ctxt) (same_var var) with
-      | Some mv -> self#eval_exp (Bil.int (Move.data mv))
-      | None ->
-        self#resolve_var var >>= fun r ->
-        match value r with
-        | Bil.Imm data ->
-          if not (Var.is_virtual var) then
-            self#update_event (create_reg_read var data) >>= fun () ->
-            SM.return r
-          else SM.return r
-        | Bil.Mem _ | Bil.Bot -> SM.return r
+      self#find_value (`Var var) >>= function
+      | None -> super#lookup var
+      | Some data -> self#eval_exp (Bil.int data)
 
-    method! update var result : 'a u =
+    method! update var result =
       super#update var result >>= fun () ->
       match value result with
       | Bil.Imm data ->
         if not (Var.is_virtual var) then
-          SM.update (fun c -> c#discard_event (is_previous_write var)) >>= fun () ->
           self#update_event (create_reg_write var data)
         else SM.return ()
       | Bil.Mem _ | Bil.Bot -> SM.return ()
 
     method! eval_store ~mem ~addr data endian size =
-      super#eval_store ~mem ~addr data endian size >>= fun r ->
-      self#eval_exp addr >>= fun addr ->
-      self#eval_exp data >>= fun data ->
-      match value addr, value data with
-      | Bil.Imm addr, Bil.Imm data ->
-        SM.update (fun c -> c#discard_event (is_previous_store addr)) >>= fun () ->
-        let ev = create_mem_store addr data in
-        self#update_event ev >>= fun () -> SM.return r
-      | _ -> SM.return r
+      self#eval_exp addr >>= fun addr_r ->
+      self#eval_exp data >>= fun data_r ->
+      match value addr_r, value data_r with
+      | Bil.Imm got_addr, Bil.Imm got_data ->
+        self#update_event (create_mem_store got_addr got_data) >>= fun () ->
+        super#eval_store ~mem ~addr data endian size
+      | _ -> super#eval_store ~mem ~addr data endian size
 
-    method private store_and_load ~mem ~addr mv endian size =
-      let data = Bil.int (Move.data mv) in
-      super#eval_store ~mem ~addr data endian size >>= fun r ->
-      match value r with
-      | Bil.Mem _ -> super#update mem_var r >>= fun () ->
-        super#eval_load ~mem ~addr endian size
-      | Bil.Imm _ | Bil.Bot -> SM.return r
-
-    (** [resolve_addr addr] - returns a result, bound with [addr].
-        Sequence of searches is the following:
-        1) among load events that occured at current step, in the same context,
-           with the same address;
-        2) among load events that occures at current step, in other context,
-           with the same address;
-        3) in current context. *)
-    method private resolve_addr ~mem ~addr endian size =
-      self#eval_exp addr >>= fun addr_res ->
-      match value addr_res with
-      | Bil.Bot | Bil.Mem _ -> SM.return addr_res
-      | Bil.Imm addr' ->
-        SM.get () >>= fun ctxt ->
-        match find_mem_load (self_events ctxt) (same_addr addr') with
-        | Some mv -> self#store_and_load ~mem ~addr mv endian size
-        | None ->
-          match find_mem_load (other_events ctxt) (same_addr addr') with
-          | None -> super#eval_load ~mem ~addr endian size
-          | Some mv -> self#store_and_load ~mem ~addr mv endian size
-
-    (** [eval_load ~mem ~addr endian size] - returns a result bound with [addr].
-        Search starts from self events, if it was write access to given
-        address at current step. And if it was, then result of write access
-        returned and no load event is emitted.
-        Otherwise searching continues as written above for [resolve_addr],
-        with emitting memory load event. *)
     method! eval_load ~mem ~addr endian size =
-      SM.get () >>= fun ctxt ->
       self#eval_exp addr >>= fun addr_res ->
       match value addr_res with
-      | Bil.Bot | Bil.Mem _ -> SM.return addr_res
+      | Bil.Bot | Bil.Mem _ -> super#eval_load ~mem ~addr endian size
       | Bil.Imm addr' ->
-        match find_mem_store (self_events ctxt) (same_addr addr') with
-        | Some mv -> self#eval_exp (Bil.int (Move.data mv))
+        self#find_value (`Addr addr') >>= function
+        | Some data ->
+          super#eval_store ~mem ~addr (Bil.int data) endian size >>= fun sr ->
+          self#update mem_var sr >>= fun () ->
+          super#eval_load ~mem ~addr endian size
         | None ->
-          self#resolve_addr mem addr endian size >>= fun r ->
-          match value addr_res, value r with
-          | Bil.Imm addr, Bil.Imm data ->
-            self#update_event (create_mem_load addr data) >>= fun () ->
+          super#eval_load ~mem ~addr endian size >>= fun r ->
+          match value r with
+          | Bil.Imm data ->
+            self#update_event (create_mem_load addr' data) >>= fun () ->
             SM.return r
-          | _ ->  SM.return r
+          | _ -> SM.return r
 
     method private add_pc_update =
       SM.get () >>= fun ctxt ->
@@ -278,7 +233,7 @@ class ['a] t arch dis =
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
-        self#eval bil
+        self#eval (Stmt.normalize ~normalize_exp:true bil)
 
     method private eval_chunk chunk =
       self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
@@ -289,15 +244,34 @@ class ['a] t arch dis =
         | Error er -> SM.update (fun c -> c#notify_error er)
         | Ok insn -> self#eval_insn insn
 
+    method! eval_memory_load mv =
+      let addr = Bil.int @@ Move.cell mv in
+      let data = Move.data mv in
+      match Size.of_int_opt @@ Word.bitwidth data with
+      | None -> SM.return ()
+      | Some size ->
+        SM.get () >>= fun ctxt ->
+        super#eval_store
+          ~mem:(Bil.var mem_var) ~addr (Bil.int data) endian size >>= fun r ->
+        SM.put ctxt >>= fun () ->
+        super#update mem_var r >>= fun () ->
+        super#eval_memory_load mv
+
+    method! eval_pc_update addr =
+      super#eval_pc_update addr >>= fun () ->
+      self#verify_frame
+
+    method! eval_exec code =
+      super#eval_exec code >>= fun () ->
+      SM.update (fun c -> c#set_code code)
+
     method! eval_event ev =
+      super#eval_event ev >>= fun () ->
       Value.Match.(
         select @@
-        case Event.code_exec (fun code ->
-            SM.update (fun c -> c#set_code code)) @@
-        case Event.pc_update (fun addr ->
-            self#eval_pc_update addr >>= fun () ->
-            self#verify_frame >>= fun () ->
-            self#update_event ev) @@
+        case Event.code_exec    (fun _ -> SM.return ()) @@
+        case Event.memory_store (fun _ -> SM.return ()) @@
+        case Event.memory_load  (fun _ -> SM.return ()) @@
         default (fun () -> self#update_event ev)) ev
 
     method private verify_frame : 'a u =
@@ -307,7 +281,8 @@ class ['a] t arch dis =
       | Some code ->
         SM.update (fun c -> c#split) >>= fun () ->
         self#eval_chunk code      >>= fun () ->
-        SM.update (fun c -> c#merge)
+        SM.update (fun c -> c#merge) >>= fun () ->
+        SM.return ()
 
     method! eval_trace trace =
       super#eval_trace trace >>= fun () -> self#verify_frame

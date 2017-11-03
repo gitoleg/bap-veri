@@ -1,3 +1,4 @@
+open Core_kernel.Std
 open Bap.Std
 open Bap_traces.Std
 
@@ -7,60 +8,62 @@ open SM.Monad_infix
 type 'a u = 'a Bil.Result.u
 type event = Trace.event
 
-let stub = fun _ -> SM.return () 
+let stub = fun _ -> SM.return ()
 
 class context trace =
  object(self:'s)
     inherit Bili.context
-    val events = Trace.read_events trace 
+    val events = Trace.read_events trace
     method next_event = match Seq.next events with
-      | None -> None 
+      | None -> None
       | Some (ev,evs) -> Some ({<events = evs; >}, ev)
 
     method with_events trace = {<events = Trace.read_events trace >}
   end
 
-let data_size mv = 
+let data_size mv =
   Word.bitwidth (Move.data mv) |> Size.of_int_opt
 
-let mem_of_arch arch = 
+let mem_of_arch arch =
   let (module T : Target) = target_of_arch arch in
   T.CPU.mem
 
-class ['a] t arch = 
-  let mem_var = mem_of_arch arch in 
+class ['a] t arch =
+  let mem_var = mem_of_arch arch in
   let mem = Bil.var mem_var in
   let endian = Arch.endian arch in
   object(self)
     constraint 'a = #context
-    inherit ['a] Bili.t
+    inherit ['a] Bili.t as super
 
-    method eval_memory_store mv = 
+    method eval_memory_store mv =
       match data_size mv with
       | None -> SM.return ()
       | Some size ->
         let addr = Bil.int (Move.cell mv) in
         let data = Bil.int (Move.data mv) in
-        self#eval_store ~mem ~addr data endian size >>= fun r ->
+        let exp = Bil.store ~mem ~addr data endian size in
+        self#eval_exp exp >>= fun r ->
         SM.update (fun c -> c#update mem_var r)
 
-    method eval_register_write mv = 
+    method eval_register_write mv =
       self#eval_move (Move.cell mv) (Bil.int (Move.data mv))
 
-    method eval_pc_update addr = 
-      SM.update (fun c -> c#with_pc (Bil.Imm addr))    
+    method eval_pc_update addr =
+      SM.update (fun c -> c#with_pc (Bil.Imm addr))
 
-    method eval_memory_load mv = 
+    method eval_memory_load mv =
       match data_size mv with
       | None -> SM.return ()
       | Some size ->
         let addr = Bil.int (Move.cell mv) in
-        self#eval_load ~mem ~addr endian size >>| ignore
+        let exp = Bil.load ~mem ~addr endian size in
+        self#eval_exp exp >>| ignore
 
-    method eval_register_read mv = 
+    method eval_register_read mv =
       self#lookup (Move.cell mv) >>| ignore
 
-    method eval_exn exn = 
+    method eval_exn exn =
       self#eval_cpuexn (Exn.number exn)
 
     method eval_event ev =
@@ -80,11 +83,11 @@ class ['a] t arch =
         case Event.modload self#eval_modload @@
         default SM.return) ev
 
-    method eval_trace trace : 'a u = 
+    method eval_trace trace : 'a u =
       SM.update (fun ctxt -> ctxt#with_events trace) >>= fun () -> self#run
 
-    method private run : 'a u = 
-      SM.get () >>= fun ctxt -> 
+    method private run : 'a u =
+      SM.get () >>= fun ctxt ->
       match ctxt#next_event with
       | None -> SM.return ()
       | Some (ctxt, ev) ->
