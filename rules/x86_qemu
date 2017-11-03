@@ -51,8 +51,8 @@ SKIP .* '.* => .*' ''
 
 # tracer produces extra zero writes/reads when operands size
 # lesser then current mode bitwidth, e.g. Mov8mi
-SKIP .* '.* => 0' ''
-SKIP .* '.* <= 0' ''
+SKIP .* '.* => 0$' ''
+SKIP .* '.* <= 0$' ''
 
 # Last rules means that every event should has a pair
 DENY .* '.*' ''
