@@ -1,4 +1,4 @@
-open Core_kernel.Std
+open Core_kernel
 open OUnit2
 open Bap.Std
 open Bap_future.Std
@@ -14,7 +14,7 @@ module Events = Value.Set
 let rule_with_skip = Rule.create_exn Rule.skip ~left:".F => .*"
 let rule_with_deny = Rule.create_exn Rule.deny ~left:"(.F) <= .*" ~right:"\\1 <= .*"
 let rule_with_skip' = Rule.create_exn Rule.skip ~left:".F <= .*"
-let policy = 
+let policy =
   let add rule policy = Policy.add policy rule in
   add rule_with_skip Policy.empty |> add rule_with_deny |> add rule_with_skip'
 
@@ -38,6 +38,6 @@ let test_denied ctxt =
   | res -> assert_failure "match result is unexpectable long"
 
 let suite () =
-  "Veri rule test" >::: [ 
+  "Veri rule test" >::: [
     "denied"  >:: test_denied;
   ]

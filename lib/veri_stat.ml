@@ -1,4 +1,4 @@
-open Core_kernel.Std
+open Core_kernel
 open Regular.Std
 
 module Calls = String.Map
@@ -16,13 +16,13 @@ let empty = { calls = Calls.empty; errors = []; }
 let errors t = t.errors
 let notify t er = {t with errors = er :: t.errors }
 
-let update t name ~ok ~er = 
-  {t with 
+let update t name ~ok ~er =
+  {t with
    calls =
      Map.change t.calls name
-       (function 
+       (function
          | None -> Some (ok, er)
-         | Some (ok',er') -> Some (ok + ok', er + er')) } 
+         | Some (ok',er') -> Some (ok + ok', er + er')) }
 
 let failbil t name = update t name ~ok:0 ~er:1
 let success t name = update t name ~ok:1 ~er:0
@@ -33,10 +33,10 @@ module Abs = struct
 
   let fold_calls {calls} f = Map.fold ~f ~init:0 calls
 
-  let errors_count t = 
+  let errors_count t =
     let rec loop ((ovr, dmg, undis, misl) as acc) = function
       | [] -> acc
-      | hd :: tl -> match hd with 
+      | hd :: tl -> match hd with
         | `Overloaded_chunk -> loop (ovr + 1, dmg, undis, misl) tl
         | `Damaged_chunk  _ -> loop (ovr, dmg + 1, undis, misl) tl
         | `Disasm_error   _ -> loop (ovr, dmg, undis + 1, misl) tl
@@ -50,18 +50,18 @@ module Abs = struct
   let successed   t = fold_calls t (fun ~key ~data cnt -> cnt + fst data)
   let misexecuted t = fold_calls t (fun ~key ~data cnt -> cnt + snd data)
 
-  let abs_successed t = 
+  let abs_successed t =
     fold_calls t (fun ~key ~data cnt ->
         if snd data <> 0 then cnt
         else cnt + fst data)
-      
-  let abs_misexecuted t = 
-    fold_calls t (fun ~key ~data cnt ->   
-      if fst data <> 0 then cnt 
+
+  let abs_misexecuted t =
+    fold_calls t (fun ~key ~data cnt ->
+      if fst data <> 0 then cnt
       else cnt + snd data)
 
-  let total t = 
-    List.length t.errors + 
+  let total t =
+    List.length t.errors +
     fold_calls t (fun ~key ~data cnt -> cnt + fst data + snd data)
 
 end
@@ -69,7 +69,7 @@ end
 module Rel = struct
   type t = ?as_percents:bool -> stat -> float
 
-  let apply f b t  = 
+  let apply f b t  =
     let r = float (f t) /. float (Abs.total t) in
     if b then r *. 100.0
     else r
@@ -91,7 +91,7 @@ module Names = struct
   type nonrec t = t -> string list
 
   let fold_calls ~condition t =
-    Map.fold ~f:(fun ~key ~data names -> 
+    Map.fold ~f:(fun ~key ~data names ->
         if condition data then Set.add names key
         else names) ~init:String.Set.empty t.calls |>
     Set.to_list
@@ -101,20 +101,20 @@ module Names = struct
   let misexecuted = fold_calls ~condition:(fun data -> snd data <> 0)
   let abs_misexecuted = fold_calls ~condition:(fun data -> fst data = 0)
 
-  let mislifted t = 
-    List.fold_left ~init:String.Set.empty 
+  let mislifted t =
+    List.fold_left ~init:String.Set.empty
       ~f:(fun names errs ->
-          match errs with 
+          match errs with
           | `Lifter_error (insn,_) -> Set.add names insn
           | _ -> names) t.errors |>
     Set.to_list
 end
 
-let print_table fmt info data = 
-  let open Textutils.Std in
+let print_table fmt info data =
+  let open Textutils in
   let open Ascii_table in
-  let cols = 
-    List.fold ~f:(fun acc (name, f) -> 
+  let cols =
+    List.fold ~f:(fun acc (name, f) ->
         (Column.create name f)::acc) ~init:[] info |> List.rev in
   Format.fprintf fmt "%s"
     (to_string ~bars:`Ascii ~display:Display.short_box cols data)
@@ -144,7 +144,7 @@ module Summary = struct
   let pp fmt t = match of_stat t with
     | [] -> Format.fprintf fmt "summary is unavailable\n"
     | ps ->
-      print_table fmt 
+      print_table fmt
         ["", (fun x -> x.name);
          "rel", (fun x -> Printf.sprintf "%.2f%%" x.rel);
          "abs",  (fun x -> Printf.sprintf "%d" x.abs);]
@@ -174,18 +174,18 @@ include Regular.Make(struct
 
     let pp_misexecuted fmt = function
       | [] -> ()
-      | mis -> 
+      | mis ->
         Format.fprintf fmt "misexecuted \n";
-        print_table fmt 
+        print_table fmt
           [ "instruction", fst;
             "failed", (fun (_, (_,er)) -> Printf.sprintf "%d" er);
-            "successful", (fun (_, (ok,_)) -> Printf.sprintf "%d" ok); ] 
+            "successful", (fun (_, (ok,_)) -> Printf.sprintf "%d" ok); ]
           mis
 
-    let pp_mislifted fmt names = 
+    let pp_mislifted fmt names =
       let max_row_len = 10 in
       let max_col_cnt = 5 in
-      match names with 
+      match names with
       | [] -> ()
       | names when List.length names <= max_row_len ->
         let names' = "mislifted:" :: names in
@@ -204,12 +204,11 @@ include Regular.Make(struct
           make_col 0; make_col 1; make_col 2; make_col 3; make_col 4; ] in
         print_table fmt cols rows
 
-    let pp fmt t = 
-      let misexec = 
+    let pp fmt t =
+      let misexec =
         List.filter ~f:(fun (_,(_,er)) -> er <> 0) (Map.to_alist t.calls) in
       let mislift = Names.mislifted t in
       Format.fprintf fmt "%a\n%a\n"
         pp_misexecuted misexec pp_mislifted mislift
 
   end)
-
