@@ -1,6 +1,6 @@
 (** rule = ACTION : INSN : EVENT : EVENT  *)
 
-open Core_kernel.Std
+open Core_kernel
 open Regular.Std
 
 type t [@@deriving bin_io, compare, sexp]
@@ -9,9 +9,9 @@ type field
 include Regular.S with type t := t
 
 (** [create ~insn ~left ~right action] - returns a rule,
-    if all of fields {insn, left, right} either contains 
+    if all of fields {insn, left, right} either contains
     correct regular expression, either plain string, either
-    are an empty strings. If some field is not given, it's 
+    are an empty strings. If some field is not given, it's
     assumed that an empty string fits well for this field. *)
 val create :
   ?insn:string -> ?left:string -> ?right:string -> action -> t Or_error.t

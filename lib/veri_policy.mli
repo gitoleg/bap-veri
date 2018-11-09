@@ -1,11 +1,11 @@
-open Core_kernel.Std
+open Core_kernel
 open Bap.Std
 open Bap_traces.Std
 open Regular.Std
 
 type event = Trace.event
 type events = Value.Set.t
-type rule = Veri_rule.t 
+type rule = Veri_rule.t
 
 module Matched : sig
   type t = event list * event list [@@deriving bin_io, compare, sexp]
