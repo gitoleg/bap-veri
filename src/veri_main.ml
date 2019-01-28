@@ -7,7 +7,16 @@ open Veri_policy
 
 module Dis = Disasm_expert.Basic
 
-let () =
+let plugins = Plugins.list ()
+
+let () = List.iter plugins ~f:(fun p ->
+             match Plugin.load p with
+             | Ok () -> printf "%s successfully loaded\n" (Plugin.name p)
+             | Error er ->
+                printf "failed to load %s because: %s\n"
+                       (Plugin.name p) (Error.to_string_hum er))
+
+let not_load () =
   match Plugins.load () |> Result.all with
   | Ok plugins -> ()
   | Error (path, er) ->

@@ -25,7 +25,7 @@ Library veri
   Install:        true
   NativeOpt:      -pp 'ppx-jane -dump-ast' -predicates ppx_driver
   ByteOpt:        -pp 'ppx-jane -dump-ast' -predicates ppx_driver
-  BuildDepends:   pcre, textutils, threads
+  BuildDepends:   pcre, textutils, threads, graphlib
 
 Library veri_test
   Path:           tests
