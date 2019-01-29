@@ -7,26 +7,7 @@ open Veri_policy
 
 module Dis = Disasm_expert.Basic
 
-let plugins = Plugins.list ()
-
-let loaded () =
-  list_loaded_units () |> String.concat ~sep:" "
-
-let load p =
-  match Plugin.load p with
-  | Ok () ->
-     printf "state: %s\n" (loaded ());
-     printf "%s successfully loaded;\n\n" (Plugin.name p)
-
-
-  | Error er ->
-     printf "state: %s\n" (loaded ());
-     printf "failed to load %s because: %s\n\n"
-       (Plugin.name p) (Error.to_string_hum er)
-
-let () = List.iter plugins ~f:(fun p -> load p)
-
-let not_load () =
+let () =
   match Plugins.load () |> Result.all with
   | Ok plugins -> ()
   | Error (path, er) ->
