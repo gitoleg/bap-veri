@@ -1,35 +1,36 @@
-opam-version: "1.2"
+opam-version: "2.0"
 name: "bap-veri"
 version: "master"
 maintainer: "Ivan Gotovchits <ivg@ieee.org>"
 authors: "BAP Team"
+license: "MIT"
 homepage: "https://github.com/BinaryAnalysisPlatform/bap-veri/"
 bug-reports: "https://github.com/BinaryAnalysisPlatform/bap-veri/issues"
-dev-repo: "git://github.com/BinaryAnalysisPlatform/bap-veri/"
-license: "MIT"
-
+depends: [
+  "ocaml" {>= "4.04.1"}
+  "bap"
+  "cmdliner"
+  "oasis" {build}
+  "ounit"
+  "pcre"
+  "core" {>= "v0.9.1"}
+  "textutils"
+  "uri"
+]
+flags: light-uninstall
 build: [
   ["oasis" "setup"]
   ["./configure" "--prefix=%{prefix}%"]
   [make]
 ]
-
-install: [[make "install"]]
-
+install: [make "install"]
 remove: [
   ["ocamlfind" "remove" "bap-veri"]
   ["rm" "-f" "%{bin}%/bap-veri"]
 ]
+dev-repo: "git://github.com/BinaryAnalysisPlatform/bap-veri/"
 
-depends: [
-    "bap"
-    "cmdliner"
-    "oasis"       {build}
-    "ounit"
-    "pcre"
-    "core"        {>= "v0.9.1"}
-    "textutils"
-    "uri"
-]
-
-available: [ocaml-version >= "4.02.3"]
+synopsis: "BAP verification tool"
+description:"""
+compares results of instructions execution in trace with execution of BIL code,
+that describes this instructions """ 

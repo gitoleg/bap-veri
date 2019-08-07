@@ -3,6 +3,10 @@ open Bap.Std
 open Regular.Std
 open Bap_traces.Std
 open Bap_future.Std
+open Bap_core_theory
+
+module Dis = Disasm_expert.Basic
+
 
 module SM = Monad.State
 open SM.Monad_infix
@@ -105,9 +109,27 @@ class context stat policy trace = object(self:'s)
   method drop_pc = self#with_pc Bil.Bot
 end
 
+
+let new_insn arch mem insn =
+  let open KB.Syntax in
+  KB.Object.create Theory.Program.cls >>= fun code ->
+  KB.provide Arch.slot code (Some arch) >>= fun () ->
+  KB.provide Memory.slot code (Some mem) >>= fun () ->
+  KB.provide Dis.Insn.slot code (Some insn) >>| fun () ->
+  code
+
+let lift arch mem insn =
+  match KB.run Theory.Program.cls (new_insn arch mem insn) KB.empty with
+  | Ok (code,_) -> 
+    let insn = KB.Value.get Theory.Program.Semantics.slot code in
+    Ok (Insn.bil insn)
+  | Error c -> 
+    let er = Error.of_string (Sexp.to_string (KB.sexp_of_conflict c)) in
+    Error er
+
 let target_info arch =
   let module Target = (val target_of_arch arch) in
-  Target.CPU.mem, Target.lift
+  Target.CPU.mem, lift arch
 
 let memory_of_chunk endian chunk =
   Bigstring.of_string (Chunk.data chunk) |>
@@ -125,7 +147,9 @@ let is_previous_mv tag test ev =
 let is_previous_write = is_previous_mv Event.register_write
 let is_previous_store = is_previous_mv Event.memory_store
 let self_events c = Set.to_list c#events
-let same_var  var  mv = Var.name var  = Var.name (Move.cell mv)
+let same_var var mv =
+  String.equal (Var.name var) (Var.name @@ Move.cell mv)
+ 
 let same_addr addr mv = addr = Move.cell mv
 
 type find = [ `Addr of addr | `Var of var ]

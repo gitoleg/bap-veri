@@ -153,7 +153,8 @@ let match_events rule insn events events' =
     | _ -> match_both rule left right
 
 let remove what from =
-  let not_exists e = not (List.exists what ~f:(fun e' -> e = e')) in
+  let eq x y = Value.compare x y = 0 in
+  let not_exists e = not (List.exists what ~f:(fun e' -> eq e e')) in
   Set.filter ~f:not_exists from
 
 let remove_matched events events' (ms, ms') =
