@@ -120,10 +120,10 @@ let new_insn arch mem insn =
 
 let lift arch mem insn =
   match KB.run Theory.Program.cls (new_insn arch mem insn) KB.empty with
-  | Ok (code,_) -> 
+  | Ok (code,_) ->
     let insn = KB.Value.get Theory.Program.Semantics.slot code in
     Ok (Insn.bil insn)
-  | Error c -> 
+  | Error c ->
     let er = Error.of_string (Sexp.to_string (KB.sexp_of_conflict c)) in
     Error er
 
@@ -149,7 +149,7 @@ let is_previous_store = is_previous_mv Event.memory_store
 let self_events c = Set.to_list c#events
 let same_var var mv =
   String.equal (Var.name var) (Var.name @@ Move.cell mv)
- 
+
 let same_addr addr mv = addr = Move.cell mv
 
 type find = [ `Addr of addr | `Var of var ]
@@ -249,6 +249,9 @@ class ['a] t arch dis =
       self#add_pc_update >>= fun () ->
       SM.update (fun c -> c#switch)
 
+    method! eval bil =
+      super#eval (Stmt.normalize ~normalize_exp:true bil)
+
     method private eval_insn (mem, insn) =
       let name = Disasm.insn_name insn in
       SM.update (fun c -> c#set_insn name) >>= fun () ->
@@ -257,7 +260,7 @@ class ['a] t arch dis =
         SM.update (fun c -> c#notify_error (`Lifter_error (name, er)))
       | Ok bil ->
         SM.update (fun c -> c#set_bil bil) >>= fun () ->
-        self#eval (Stmt.normalize ~normalize_exp:true bil)
+        self#eval bil
 
     method private eval_chunk chunk =
       self#update_event (Value.create Event.pc_update (Chunk.addr chunk)) >>= fun () ->
@@ -311,4 +314,8 @@ class ['a] t arch dis =
     method! eval_trace trace =
       super#eval_trace trace >>= fun () -> self#verify_frame
 
+    method! eval_while ~cond ~body =
+      super#eval_exp cond >>| value >>= function
+      | Imm r when Word.(r = b1) -> self#eval body
+      | _ ->  SM.return ()
   end
