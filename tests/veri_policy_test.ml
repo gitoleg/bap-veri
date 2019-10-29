@@ -26,6 +26,10 @@ let make_flag var_name flag =
 let flag  = make_flag "CF" true
 let flag' = make_flag "CF" false
 
+let events_equal x y =
+  List.length x = List.length y &&
+  List.for_all x ~f:(fun e -> List.mem y e ~equal:Value.equal)
+
 let test_denied ctxt =
   let left  = Events.of_list [make_flag "OF" true; flag; make_flag "SF" true] in
   let right = Events.of_list [make_flag "OF" true; flag'] in
@@ -33,8 +37,8 @@ let test_denied ctxt =
   | [] -> assert_failure "match result is empty"
   | (rule, (left', right')) :: [] ->
     assert_equal ~ctxt ~cmp:Rule.equal rule rule_with_deny;
-    assert_equal ~ctxt [flag] left';
-    assert_equal ~ctxt [flag'] right'
+    assert_equal ~cmp:events_equal ~ctxt [flag] left';
+    assert_equal ~cmp:events_equal ~ctxt [flag'] right'
   | res -> assert_failure "match result is unexpectable long"
 
 let suite () =
