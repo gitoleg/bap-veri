@@ -116,12 +116,12 @@ let input =
 
 let output =
   Extension.Command.parameter ~doc:"File to output results"
-    Extension.Type.("FILE | DIR" %: some path)
+    Extension.Type.("FILE"  %: some path)
     "output"
 
 let rules =
   Extension.Command.parameter ~doc:"File with policy description"
-    Extension.Type.("FILE | DIR" %: some non_dir_file)
+    Extension.Type.("FILE" %: some non_dir_file)
     "rules"
 
 let show_errors =
@@ -131,7 +131,7 @@ let show_errors =
 
 let show_stat =
   Extension.Command.flag
-    ~doc:"Show verification statistic"
+    ~doc:"Show verification statistics"
     "show-stat"
 
 let man =
