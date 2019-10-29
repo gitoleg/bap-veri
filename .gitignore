@@ -2,11 +2,13 @@
 *.mllib
 *.byte
 *.native
+*.plugin
 /_build
-/Makefile
+/plugin/_build
 /setup.data
 /setup.log
 /setup.ml
 /_tags
 *META
 /configure
+myocamlbuild.ml

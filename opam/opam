@@ -9,28 +9,26 @@ bug-reports: "https://github.com/BinaryAnalysisPlatform/bap-veri/issues"
 depends: [
   "ocaml" {>= "4.04.1"}
   "bap"
-  "cmdliner"
   "oasis" {build}
   "ounit"
   "pcre"
   "core" {>= "v0.9.1"}
   "textutils"
   "uri"
+  "monads"
 ]
 flags: light-uninstall
 build: [
-  ["oasis" "setup"]
-  ["./configure" "--prefix=%{prefix}%"]
   [make]
 ]
 install: [make "install"]
 remove: [
   ["ocamlfind" "remove" "bap-veri"]
-  ["rm" "-f" "%{bin}%/bap-veri"]
+  [make "uninstall"]
 ]
 dev-repo: "git://github.com/BinaryAnalysisPlatform/bap-veri/"
 
 synopsis: "BAP verification tool"
 description:"""
 compares results of instructions execution in trace with execution of BIL code,
-that describes this instructions """ 
+that describes this instructions """

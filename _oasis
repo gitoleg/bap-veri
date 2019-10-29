@@ -7,7 +7,7 @@ Maintainers:  Ivan Gotovchits <ivg@ieee.org>,
               Oleg Kamenkov <forown@yandex.ru>
 License:      MIT
 Copyrights:   (C) 2016 Carnegie Mellon University
-Plugins:      META (0.4), DevFiles (0.4)
+Plugins:      META (0.4)
 BuildTools:   ocamlbuild
 BuildDepends: ppx_jane, core_kernel, bap, bap-traces
 
@@ -25,7 +25,7 @@ Library veri
   Install:        true
   NativeOpt:      -pp 'ppx-jane -dump-ast' -predicates ppx_driver
   ByteOpt:        -pp 'ppx-jane -dump-ast' -predicates ppx_driver
-  BuildDepends:   pcre, textutils, threads, graphlib
+  BuildDepends:   pcre, textutils, threads, graphlib, monads
 
 Library veri_test
   Path:           tests
@@ -38,20 +38,13 @@ Library veri_test
                   Veri_stat_test
   BuildDepends:   bap-veri, oUnit
 
-Executable "bap-veri"
-  Path:           src
-  MainIs:         veri_main.ml
-  CompiledObject: best
-  Install:        true
-  BuildDepends:   findlib.dynload, bap.plugins, bap-veri, cmdliner
-
 Executable run_tests
   Path:           tests
   MainIs:         run_tests.ml
   Install:        false
   Build$:         flag(tests)
   CompiledObject: best
-  BuildDepends:   bap.plugins, veri_test, oUnit, findlib.dynload
+  BuildDepends:   monads, bap-main, veri_test, oUnit, findlib.dynload
 
 Test veri_test
   TestTools:      run_tests

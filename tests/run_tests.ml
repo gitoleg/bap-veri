@@ -1,13 +1,6 @@
 open Core_kernel
-open Bap_plugins.Std
 open OUnit2
-
-let load_plugins () =
-  match Plugins.load () |> Result.all with
-  | Ok plugins -> ()
-  | Error (p,e)->
-    assert_string ("failed to load plugin from " ^ p ^ ": " ^
-                   Error.to_string_hum e)
+open Bap_main
 
 let suite () =
   "Bap-veri" >::: [
@@ -18,5 +11,10 @@ let suite () =
   ]
 
 let () =
-  load_plugins ();
+  let _ =
+    match Bap_main.init ~name:"veri-runtests" ()
+    with Ok () -> ()
+       | Error err ->
+          Format.eprintf "Program failed with: %a@\n%!"
+            Extension.Error.pp err in
   run_test_tt_main (suite ())

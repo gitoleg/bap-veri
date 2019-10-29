@@ -4,6 +4,7 @@ open Bap.Std
 open Bap_future.Std
 open Bap_traces.Std
 open Event
+open Monads.Std
 
 module Dis = Disasm_expert.Basic
 
@@ -51,7 +52,7 @@ let make_trace code real_evs =
   Trace.set_attr trace Meta.arch arch
 
 let is_equal_events evs evs' =
-  let is_exists ev = List.exists ~f:(fun ev' -> ev = ev') evs' in
+  let is_exists ev = List.exists ~f:(fun ev' -> Value.equal ev ev') evs' in
   List.length evs = List.length evs' &&
   List.for_all ~f:is_exists evs
 
