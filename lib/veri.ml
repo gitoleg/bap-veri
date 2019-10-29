@@ -4,6 +4,7 @@ open Regular.Std
 open Bap_traces.Std
 open Bap_future.Std
 open Bap_core_theory
+open Monads.Std
 
 module Dis = Disasm_expert.Basic
 

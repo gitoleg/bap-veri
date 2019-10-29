@@ -1,6 +1,7 @@
 open Core_kernel
 open Bap.Std
 open Bap_traces.Std
+open Monads.Std
 
 module SM = Monad.State
 open SM.Monad_infix
