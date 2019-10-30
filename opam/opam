@@ -15,7 +15,6 @@ depends: [
   "core" {>= "v0.9.1"}
   "textutils"
   "uri"
-  "monads"
 ]
 flags: light-uninstall
 build: [
@@ -24,7 +23,6 @@ build: [
 install: [make "install"]
 remove: [
   ["ocamlfind" "remove" "bap-veri"]
-  [make "uninstall"]
 ]
 dev-repo: "git://github.com/BinaryAnalysisPlatform/bap-veri/"
 

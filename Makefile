@@ -4,14 +4,14 @@ build:
 	oasis setup
 	ocaml setup.ml -configure --prefix=`opam config var prefix`
 	ocaml setup.ml -build
-	ocaml setup.ml -install
-	make -C plugin/ build
 
 install:
+	ocaml setup.ml -install
+	make -C plugin/ build
 	make -C plugin/ install
 
 uninstall:
-	if [ -f setup.ml ]; then ocaml setup.ml -uninstall; fi
+	ocamlfind remove bap-veri
 	make -C plugin/ uninstall
 
 clean:
