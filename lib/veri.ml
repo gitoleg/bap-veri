@@ -114,7 +114,7 @@ end
 let new_insn arch mem insn =
   let open KB.Syntax in
   KB.Object.create Theory.Program.cls >>= fun code ->
-  KB.provide Arch.slot code (Some arch) >>= fun () ->
+  KB.provide Arch.slot code arch >>= fun () ->
   KB.provide Memory.slot code (Some mem) >>= fun () ->
   KB.provide Dis.Insn.slot code (Some insn) >>| fun () ->
   code
