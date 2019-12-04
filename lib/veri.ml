@@ -8,13 +8,12 @@ open Monads.Std
 
 module Dis = Disasm_expert.Basic
 
-
 module SM = Monad.State
 open SM.Monad_infix
 
 type event = Trace.event [@@deriving bin_io, compare, sexp]
-type 'a u = 'a Bil.Result.u
-type 'a r = 'a Bil.Result.r
+type 'a u = 'a Bil.Result.u [@@warning "-D"]
+type 'a r = 'a Bil.Result.r [@@warning "-D"]
 type 'a e = (event option, 'a) SM.t
 type error = Veri_error.t
 
@@ -31,7 +30,7 @@ let create_mem_store = create_move_event Event.memory_store
 let create_mem_load  = create_move_event Event.memory_load
 let create_reg_read  = create_move_event Event.register_read
 let create_reg_write = create_move_event Event.register_write
-let value = Bil.Result.value
+let value = Bil.Result.value [@warning "-D"]
 
 module Disasm = struct
   module Dis = Disasm_expert.Basic

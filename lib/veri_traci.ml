@@ -6,14 +6,14 @@ open Monads.Std
 module SM = Monad.State
 open SM.Monad_infix
 
-type 'a u = 'a Bil.Result.u
+type 'a u = 'a Bil.Result.u [@@warning "-D"]
 type event = Trace.event
 
 let stub = fun _ -> SM.return ()
 
 class context trace =
  object(self:'s)
-    inherit Bili.context
+    inherit Bili.context [@@warning "-D"]
     val events = Trace.read_events trace
     method next_event = match Seq.next events with
       | None -> None
@@ -21,6 +21,7 @@ class context trace =
 
     method with_events trace = {<events = Trace.read_events trace >}
   end
+[@@warning "-D"]
 
 let data_size mv =
   Word.bitwidth (Move.data mv) |> Size.of_int_opt
@@ -35,7 +36,7 @@ class ['a] t arch =
   let endian = Arch.endian arch in
   object(self)
     constraint 'a = #context
-    inherit ['a] Bili.t as super
+    inherit ['a] Bili.t as super [@@warning "-D"]
 
     method eval_memory_store mv =
       match data_size mv with

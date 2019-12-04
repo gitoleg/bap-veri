@@ -111,7 +111,6 @@ module Names = struct
 end
 
 let print_table fmt info data =
-  let open Textutils in
   let open Ascii_table in
   let cols =
     List.fold ~f:(fun acc (name, f) ->

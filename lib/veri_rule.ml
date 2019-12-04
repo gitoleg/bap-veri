@@ -116,7 +116,7 @@ module S = struct
       match fields_exn str with
       | [action; insn; left; right] -> Some (action, insn, left, right)
       | _ -> None
-    with Not_found -> None
+    with _ -> None
 
   let fields_err str =
     match fields_opt str with
