@@ -7,13 +7,12 @@ license: "MIT"
 homepage: "https://github.com/BinaryAnalysisPlatform/bap-veri/"
 bug-reports: "https://github.com/BinaryAnalysisPlatform/bap-veri/issues"
 depends: [
-  "ocaml" {>= "4.04.1"}
+  "ocaml" {>= "4.07.0"}
   "bap"
   "oasis" {build}
   "ounit"
   "pcre"
-  "core" {>= "v0.9.1"}
-  "textutils"
+  "textutils_kernel"
   "uri"
 ]
 flags: light-uninstall
