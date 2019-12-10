@@ -1,5 +1,4 @@
 open Core_kernel
-open Textutils
 open Text_block
 
 module Abs = Veri_stat.Abs

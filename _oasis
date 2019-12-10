@@ -9,7 +9,7 @@ License:      MIT
 Copyrights:   (C) 2016 Carnegie Mellon University
 Plugins:      META (0.4)
 BuildTools:   ocamlbuild
-BuildDepends: ppx_jane, core_kernel, bap, bap-traces
+BuildDepends: ppx_jane, core_kernel, bap, bap-traces, threads
 
 Library veri
   Path:           lib
@@ -20,12 +20,19 @@ Library veri
                   Veri_report,
                   Veri_rule,
                   Veri_stat,
+                  Veri_tab,
                   Veri_traci
   CompiledObject: best
   Install:        true
-  NativeOpt:      -pp 'ppx-jane -dump-ast' -predicates ppx_driver
-  ByteOpt:        -pp 'ppx-jane -dump-ast' -predicates ppx_driver
-  BuildDepends:   pcre, textutils.ascii_table, threads, graphlib, monads
+  BuildDepends:   bap-core-theory, pcre, graphlib, monads
+
+Library veri_plugin
+  Path:            plugin
+  FindLibName:     bap-plugin-veri
+  InternalModules: Veri_bil, Veri_out
+  CompiledObject:  best
+  Install:         true
+  BuildDepends:    bap-main, bap-veri, bap-future, pcre, textutils_kernel.text_block, monads
 
 Library veri_test
   Path:           tests

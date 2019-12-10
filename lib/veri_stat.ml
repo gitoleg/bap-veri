@@ -110,13 +110,18 @@ module Names = struct
     Set.to_list
 end
 
-let print_table fmt info data =
-  let open Ascii_table in
-  let cols =
-    List.fold ~f:(fun acc (name, f) ->
-        (Column.create name f)::acc) ~init:[] info |> List.rev in
-  Format.fprintf fmt "%s"
-    (to_string ~bars:`Ascii ~display:Display.short_box cols data)
+let print_table :
+      Format.formatter -> (string * ('a -> string)) list -> 'a list -> unit =
+      fun fmt info rows ->
+  let open Veri_tab in
+  let headers, processors  =
+    List.map ~f:fst info, List.map ~f:snd info in
+  List.foldi rows ~init:(create headers)
+    ~f:(fun i tab row ->
+        let cells =
+          List.fold ~init:[] processors ~f:(fun acc p -> p row :: acc) in
+        add_row tab @@ List.rev cells) |>
+  pp fmt
 
 module Summary = struct
 
