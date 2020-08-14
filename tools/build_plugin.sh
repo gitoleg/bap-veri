@@ -3,7 +3,7 @@
 set -ue
 
 plugin=bap_plugin_veri
-TMPDIR=`mktemp -d`
+TMPDIR=`mktemp -d $PWD/XXX`
 cd $TMPDIR
 touch $plugin.ml
 bapbuild -package bap-plugin-veri $plugin.plugin
